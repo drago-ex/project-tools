@@ -1,0 +1,14 @@
+{
+	"name": "drago-ex/project-installer",
+	"description": "Installation and cleanup tools for Drago projects.",
+	"type": "library",
+	"license": "MIT",
+	"bin": [
+		"bin/drago-install",
+		"bin/drago-clean"
+	],
+	"require": {
+		"php": ">=8.3",
+		"composer-runtime-api": "^2.0"
+	}
+}

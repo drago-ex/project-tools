@@ -1,0 +1,33 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$projectRoot = getcwd();
+$vendorDir = $projectRoot . '/vendor/drago-ex';
+
+if (!is_dir($vendorDir)) {
+	echo "❌ Vendor drago-ex folder does not exist.\n";
+	exit(1);
+}
+
+function deleteDir(string $dir): void
+{
+	if (!is_dir($dir)) return;
+	$files = array_diff(scandir($dir), ['.', '..']);
+	foreach ($files as $file) {
+		$path = $dir . '/' . $file;
+		is_dir($path) ? deleteDir($path) : unlink($path);
+	}
+	rmdir($dir);
+}
+
+foreach (glob($vendorDir . '/*', GLOB_ONLYDIR) as $packageDir) {
+	$resourceDir = $packageDir . '/resources';
+	if (is_dir($resourceDir)) {
+		deleteDir($resourceDir);
+		echo "🗑️ Deleted: $resourceDir\n";
+	}
+}
+
+echo "✅ Done.\n";
