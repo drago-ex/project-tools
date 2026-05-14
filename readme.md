@@ -36,6 +36,18 @@ In your package's `composer.json`, define what should be installed:
 }
 ```
 
+### Global Options
+To allow installation from packages with the default type `library`, enable this flag in your **root** `composer.json`:
+
+```json
+"extra": {
+    "drago-project": {
+        "allow-library-install": true
+    }
+}
+```
+*Note: For security, only packages of type `drago-project-resource` are allowed to install resources by default. Use this flag to enable mirroring for standard libraries.*
+
 ### Sections:
 - **`copy`**: Copies files only if they do not already exist in the destination. Safe for initial setup.
 - **`replace`**: Always overwrites the destination files. Useful for core updates or shared assets.
