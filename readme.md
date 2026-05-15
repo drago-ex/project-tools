@@ -80,6 +80,7 @@ vendor/bin/drago-clean
 
 ### Options
 - `--verbose` or `-v`: Show detailed file-by-file progress during installation.
+- `--dev`: Switches the destination directory to `resources/` in the current working directory. Useful for testing installation logic during package development.
 
 ## How it works
 1. `drago-install` scans all installed packages for the `extra.drago-project.install` configuration.

@@ -28,14 +28,14 @@ if (!$autoloadFound) {
 $projectRoot = getcwd();
 
 /**
- * PARAMETRY:
- * --verbose / -v  : vypíše detailní info o kopírování
- * --dev / --root  : přepne cílový adresář na resources/ pro testování v rámci vývoje balíčku
+ * PARAMETERS:
+ * --verbose / -v : prints detailed information about copying
+ * --dev          : switches the destination directory to resources/ for testing during package development
  */
 $verbose = in_array('--verbose', $argv) || in_array('-v', $argv);
-$isDevMode = in_array('--dev', $argv) || in_array('--root', $argv);
+$isDevMode = in_array('--dev', $argv);
 
-// Pokud jsme v dev režimu, cílem není root projektu, ale složka resources v aktuálním balíčku
+// If we are in dev mode, the target is not the project root, but the resources folder in the current package
 $destinationRoot = $isDevMode ? $projectRoot . '/resources' : $projectRoot;
 
 $stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
@@ -120,7 +120,7 @@ function installPackageResources(string $packagePath, string $targetBaseDir, boo
 				continue;
 			}
 
-			// Cíl se nyní odvozuje od dynamického $targetBaseDir
+			// Destination is now derived from the dynamic $targetBaseDir
 			$destination = $dstRel === '' ? $targetBaseDir . '/' . basename($source) : $targetBaseDir . '/' . $dstRel;
 			
 			if (is_file($source)) {
@@ -150,7 +150,7 @@ if ($isDevMode) {
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 	if ($packageName === 'drago-ex/project-installer') continue;
 	
-	// Pokud vyvíjíme balíček, nechceme, aby instaloval sám sebe (přeskočíme root)
+	// If we are developing a package, we don't want it to install itself (skip root)
 	if ($packageName === $rootPackageName) {
 		continue;
 	}
@@ -158,7 +158,7 @@ foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 	try {
 		$packagePath = InstalledVersions::getInstallPath($packageName);
 		if ($packagePath) {
-			// Předáváme dynamický destinationRoot
+			// Pass the dynamic destinationRoot
 			installPackageResources($packagePath, $destinationRoot, $allowLibraryInstall);
 		}
 	} catch (Throwable) {
