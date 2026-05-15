@@ -26,7 +26,15 @@ if (!$autoloadFound) {
 }
 
 $projectRoot = getcwd();
+
+/**
+ * PARAMETRY:
+ * --verbose / -v  : vypíše detailní info o kopírování
+ * --dev / --root  : vynutí instalaci i z root balíčku (užitečné při vývoji balíčku)
+ */
 $verbose = in_array('--verbose', $argv) || in_array('-v', $argv);
+$installRoot = in_array('--dev', $argv) || in_array('--root', $argv);
+
 $stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
 
 function message(string $msg, string $icon = '', bool $force = false): void
@@ -128,10 +136,19 @@ if (!file_exists($rootComposerPath)) die("❌ Error: composer.json not found in 
 $rootComposer = json_decode(file_get_contents($rootComposerPath), true);
 $allowLibraryInstall = $rootComposer['extra']['drago-project']['allow-library-install'] ?? false;
 
+// Získání názvu aktuálního root balíčku
+$rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
+
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
-	// Skip the installer itself
+	// 1. Přeskočit samotný instalátor
 	if ($packageName === 'drago-ex/project-installer') continue;
 	
+	// 2. Kontrola, zda se jedná o balíček v rootu, ve kterém právě jsme
+	if ($packageName === $rootPackageName && !$installRoot) {
+		if ($verbose) message("Skipping root package '$packageName' (use --dev to install its resources)", 'ℹ️');
+		continue;
+	}
+
 	try {
 		$packagePath = InstalledVersions::getInstallPath($packageName);
 		if ($packagePath) {
@@ -142,4 +159,4 @@ foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 	}
 }
 
-echo "✔️ Installed ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors)\n";
+echo "✔️ Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors)\n";
