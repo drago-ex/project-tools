@@ -30,10 +30,13 @@ $projectRoot = getcwd();
 /**
  * PARAMETRY:
  * --verbose / -v  : vypíše detailní info o kopírování
- * --dev / --root  : vynutí instalaci i z root balíčku (užitečné při vývoji balíčku)
+ * --dev / --root  : přepne cílový adresář na resources/ pro testování v rámci vývoje balíčku
  */
 $verbose = in_array('--verbose', $argv) || in_array('-v', $argv);
-$installRoot = in_array('--dev', $argv) || in_array('--root', $argv);
+$isDevMode = in_array('--dev', $argv) || in_array('--root', $argv);
+
+// Pokud jsme v dev režimu, cílem není root projektu, ale složka resources v aktuálním balíčku
+$destinationRoot = $isDevMode ? $projectRoot . '/resources' : $projectRoot;
 
 $stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
 
@@ -90,7 +93,7 @@ function recursiveCopy(string $source, string $destination, bool $overwrite = fa
 	}
 }
 
-function installPackageResources(string $packagePath, string $projectRoot, bool $allowLibraryInstall): void
+function installPackageResources(string $packagePath, string $targetBaseDir, bool $allowLibraryInstall): void
 {
 	global $stats;
 	$composerPath = $packagePath . '/composer.json';
@@ -117,7 +120,9 @@ function installPackageResources(string $packagePath, string $projectRoot, bool 
 				continue;
 			}
 
-			$destination = $dstRel === '' ? $projectRoot . '/' . basename($source) : $projectRoot . '/' . $dstRel;
+			// Cíl se nyní odvozuje od dynamického $targetBaseDir
+			$destination = $dstRel === '' ? $targetBaseDir . '/' . basename($source) : $targetBaseDir . '/' . $dstRel;
+			
 			if (is_file($source)) {
 				if (is_dir($destination) || (!pathinfo($destination, PATHINFO_EXTENSION) && !file_exists($destination))) {
 					ensureDir($destination);
@@ -136,23 +141,25 @@ if (!file_exists($rootComposerPath)) die("❌ Error: composer.json not found in 
 $rootComposer = json_decode(file_get_contents($rootComposerPath), true);
 $allowLibraryInstall = $rootComposer['extra']['drago-project']['allow-library-install'] ?? false;
 
-// Získání názvu aktuálního root balíčku
 $rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
 
+if ($isDevMode) {
+	message("Dev mode active: redirecting output to $destinationRoot", '🚀', true);
+}
+
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
-	// 1. Přeskočit samotný instalátor
 	if ($packageName === 'drago-ex/project-installer') continue;
 	
-	// 2. Kontrola, zda se jedná o balíček v rootu, ve kterém právě jsme
-	if ($packageName === $rootPackageName && !$installRoot) {
-		if ($verbose) message("Skipping root package '$packageName' (use --dev to install its resources)", 'ℹ️');
+	// Pokud vyvíjíme balíček, nechceme, aby instaloval sám sebe (přeskočíme root)
+	if ($packageName === $rootPackageName) {
 		continue;
 	}
 
 	try {
 		$packagePath = InstalledVersions::getInstallPath($packageName);
 		if ($packagePath) {
-			installPackageResources($packagePath, $projectRoot, $allowLibraryInstall);
+			// Předáváme dynamický destinationRoot
+			installPackageResources($packagePath, $destinationRoot, $allowLibraryInstall);
 		}
 	} catch (Throwable) {
 		continue;
