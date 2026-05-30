@@ -100,7 +100,12 @@ function installPackageResources(string $packagePath, string $targetBaseDir, boo
 	if (!is_file($composerPath)) return;
 
 	$composer = json_decode(file_get_contents($composerPath), true);
-	$install = $composer['extra']['drago-project']['install'] ?? [];
+	$projectConfig = $composer['extra']['drago-project'] ?? [];
+	if (($projectConfig['skip'] ?? false) === true) {
+		return;
+	}
+
+	$install = $projectConfig['install'] ?? [];
 	$sections = ['copy' => false, 'replace' => true];
 
 	$type = $composer['type'] ?? 'library';

@@ -23,6 +23,7 @@ In your package's `composer.json`, define what should be installed:
 ```json
 "extra": {
     "drago-project": {
+        "skip": false,
         "install": {
             "copy": {
                 "resources/Permission": "app/Core/Permission",
@@ -49,6 +50,7 @@ To allow installation from packages with the default type `library`, enable this
 *Note: For security, only packages of type `drago-project-resource` are allowed to install resources by default. Use this flag to enable mirroring for standard libraries.*
 
 ### Sections:
+- **`skip`**: When set to `true`, skips the package completely and does not run `copy` or `replace`. Defaults to `false`.
 - **`copy`**: Copies files only if they do not already exist in the destination. Safe for initial setup.
 - **`replace`**: Always overwrites the destination files. Useful for core updates or shared assets.
 
@@ -85,5 +87,6 @@ vendor/bin/drago-clean
 ## How it works
 1. `drago-install` scans all installed packages for the `extra.drago-project.install` configuration.
 2. It resolves relative paths against the package root and the current working directory.
-3. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
-4. `drago-clean` specifically targets `vendor/drago-ex` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
+3. It skips packages with `extra.drago-project.skip` set to `true`.
+4. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
+5. `drago-clean` specifically targets `vendor/drago-ex` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
