@@ -7,9 +7,9 @@ use Composer\InstalledVersions;
 
 // Try to find composer's autoload
 $autoloadPaths = [
-	getcwd() . '/vendor/autoload.php',
-	__DIR__ . '/../../../autoload.php',
-	__DIR__ . '/../vendor/autoload.php',
+		getcwd() . '/vendor/autoload.php',
+		__DIR__ . '/../../../autoload.php',
+		__DIR__ . '/../vendor/autoload.php',
 ];
 
 $autoloadFound = false;
@@ -58,9 +58,11 @@ function ensureDir(string $dir): void
 function copyFile(string $source, string $destination, bool $overwrite = false): void
 {
 	global $stats;
+
+	$existsBefore = file_exists($destination);
 	ensureDir(dirname($destination));
 
-	if (!$overwrite && file_exists($destination)) {
+	if (!$overwrite && $existsBefore) {
 		message($destination, '⚠️ Skipped (exists):');
 		$stats['skipped']++;
 		return;
@@ -72,15 +74,15 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 	}
 
 	$stats['copied']++;
-	$icon = $overwrite && file_exists($destination) ? '🔄 Replaced:' : '✅ Copied:';
+	$icon = ($overwrite && $existsBefore) ? '🔄 Replaced:' : '✅ Copied:';
 	message("$source → $destination", $icon);
 }
 
 function recursiveCopy(string $source, string $destination, bool $overwrite = false): void
 {
 	$iterator = new RecursiveIteratorIterator(
-		new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
-		RecursiveIteratorIterator::SELF_FIRST
+			new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
+			RecursiveIteratorIterator::SELF_FIRST
 	);
 
 	foreach ($iterator as $item) {
@@ -96,16 +98,12 @@ function recursiveCopy(string $source, string $destination, bool $overwrite = fa
 function installPackageResources(string $packagePath, string $targetBaseDir, bool $allowLibraryInstall): void
 {
 	global $stats;
+
 	$composerPath = $packagePath . '/composer.json';
 	if (!is_file($composerPath)) return;
 
 	$composer = json_decode(file_get_contents($composerPath), true);
-	$projectConfig = $composer['extra']['drago-project'] ?? [];
-	if (($projectConfig['skip'] ?? false) === true) {
-		return;
-	}
-
-	$install = $projectConfig['install'] ?? [];
+	$install = $composer['extra']['drago-project']['install'] ?? [];
 	$sections = ['copy' => false, 'replace' => true];
 
 	$type = $composer['type'] ?? 'library';
@@ -119,21 +117,24 @@ function installPackageResources(string $packagePath, string $targetBaseDir, boo
 
 		foreach ($items as $srcRel => $dstRel) {
 			$source = $packagePath . '/' . $srcRel;
+
 			if (!file_exists($source)) {
 				message($source, '❌ Source not found:');
 				$stats['errors']++;
 				continue;
 			}
 
-			// Destination is now derived from the dynamic $targetBaseDir
-			$destination = $dstRel === '' ? $targetBaseDir . '/' . basename($source) : $targetBaseDir . '/' . $dstRel;
-			
+			$destination = $dstRel === ''
+					? $targetBaseDir . '/' . basename($source)
+					: $targetBaseDir . '/' . $dstRel;
+
 			if (is_file($source)) {
 				if (is_dir($destination) || (!pathinfo($destination, PATHINFO_EXTENSION) && !file_exists($destination))) {
 					ensureDir($destination);
 					$destination .= '/' . basename($source);
 				}
 				copyFile($source, $destination, $overwrite);
+
 			} elseif (is_dir($source)) {
 				recursiveCopy($source, $destination, $overwrite);
 			}
@@ -141,10 +142,19 @@ function installPackageResources(string $packagePath, string $targetBaseDir, boo
 	}
 }
 
+// ----------------------------
+// ROOT CONFIG
+// ----------------------------
 $rootComposerPath = $projectRoot . '/composer.json';
-if (!file_exists($rootComposerPath)) die("❌ Error: composer.json not found in current directory.\n");
+if (!file_exists($rootComposerPath)) {
+	die("❌ Error: composer.json not found in current directory.\n");
+}
+
 $rootComposer = json_decode(file_get_contents($rootComposerPath), true);
-$allowLibraryInstall = $rootComposer['extra']['drago-project']['allow-library-install'] ?? false;
+
+$dragoConfig = $rootComposer['extra']['drago-project'] ?? [];
+$allowLibraryInstall = $dragoConfig['allow-library-install'] ?? false;
+$packageConfig = $dragoConfig['packages'] ?? [];
 
 $rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
 
@@ -152,21 +162,33 @@ if ($isDevMode) {
 	message("Dev mode active: redirecting output to $destinationRoot", '🚀', true);
 }
 
+// ----------------------------
+// MAIN LOOP
+// ----------------------------
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
+
 	if ($packageName === 'drago-ex/project-installer') continue;
-	
-	// If we are developing a package, we don't want it to install itself (skip root)
+
+	// Skip root package
 	if ($packageName === $rootPackageName) {
+		continue;
+	}
+
+	// ✅ Skip packages via composer.json config
+	if (($packageConfig[$packageName]['skip'] ?? false) === true) {
+		message("Skipping package (config): $packageName", '⏭️', true);
 		continue;
 	}
 
 	try {
 		$packagePath = InstalledVersions::getInstallPath($packageName);
+
 		if ($packagePath) {
-			// Pass the dynamic destinationRoot
 			installPackageResources($packagePath, $destinationRoot, $allowLibraryInstall);
 		}
-	} catch (Throwable) {
+
+	} catch (Throwable $e) {
+		message("Error in $packageName: " . $e->getMessage(), '❌', true);
 		continue;
 	}
 }
