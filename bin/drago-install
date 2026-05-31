@@ -39,6 +39,7 @@ $isDevMode = in_array('--dev', $argv);
 $destinationRoot = $isDevMode ? $projectRoot . '/resources' : $projectRoot;
 
 $stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
+$installOncePackages = [];
 
 function message(string $msg, string $icon = '', bool $force = false): void
 {
@@ -95,15 +96,23 @@ function recursiveCopy(string $source, string $destination, bool $overwrite = fa
 	}
 }
 
-function installPackageResources(string $packagePath, string $targetBaseDir, bool $allowLibraryInstall): void
+function installPackageResources(
+	string $packageName,
+	string $packagePath,
+	string $targetBaseDir,
+	bool $allowLibraryInstall,
+	array $packageOptions,
+	?string $onlySection = null,
+): void
 {
-	global $stats;
+	global $stats, $installOncePackages;
 
 	$composerPath = $packagePath . '/composer.json';
 	if (!is_file($composerPath)) return;
 
 	$composer = json_decode(file_get_contents($composerPath), true);
-	$install = $composer['extra']['drago-project']['install'] ?? [];
+	$dragoConfig = $composer['extra']['drago-project'] ?? [];
+	$install = $dragoConfig['install'] ?? [];
 	$sections = ['copy' => false, 'replace' => true];
 
 	$type = $composer['type'] ?? 'library';
@@ -111,7 +120,19 @@ function installPackageResources(string $packagePath, string $targetBaseDir, boo
 		return;
 	}
 
+	$hasReplace = !empty($install['replace']);
+	$errorsBefore = $stats['errors'];
+
 	foreach ($sections as $sectionName => $overwrite) {
+		if ($onlySection !== null && $sectionName !== $onlySection) {
+			continue;
+		}
+
+		if (($packageOptions['skip-' . $sectionName] ?? false) === true) {
+			message("Skipping $sectionName section: $packageName", '[skip]', true);
+			continue;
+		}
+
 		$items = $install[$sectionName] ?? null;
 		if (!$items) continue;
 
@@ -140,6 +161,59 @@ function installPackageResources(string $packagePath, string $targetBaseDir, boo
 			}
 		}
 	}
+
+	if (
+		($onlySection === null || $onlySection === 'replace')
+		&& ($dragoConfig['install-once'] ?? false) === true
+		&& $hasReplace
+		&& $stats['errors'] === $errorsBefore
+	) {
+		$installOncePackages[] = $packageName;
+	}
+}
+
+function getPackagePriority(string $packagePath): int
+{
+	$composerPath = $packagePath . '/composer.json';
+	if (!is_file($composerPath)) {
+		return 100;
+	}
+
+	$composer = json_decode(file_get_contents($composerPath), true);
+	return (int) ($composer['extra']['drago-project']['priority'] ?? 100);
+}
+
+function writeRootComposer(string $rootComposerPath, array $rootComposer): void
+{
+	$json = json_encode($rootComposer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+	if ($json === false) {
+		throw new RuntimeException('Cannot encode root composer.json.');
+	}
+
+	file_put_contents($rootComposerPath, $json . "\n");
+}
+
+function markInstallOncePackages(string $rootComposerPath, array $rootComposer, array $packageNames): void
+{
+	if ($packageNames === []) {
+		return;
+	}
+
+	$changed = false;
+	foreach (array_unique($packageNames) as $packageName) {
+		$current = $rootComposer['extra']['drago-project']['packages'][$packageName]['skip-replace'] ?? false;
+		if ($current === true) {
+			continue;
+		}
+
+		$rootComposer['extra']['drago-project']['packages'][$packageName]['skip-replace'] = true;
+		$changed = true;
+		message("Marked package replace section as install-once: $packageName", '[once]', true);
+	}
+
+	if ($changed) {
+		writeRootComposer($rootComposerPath, $rootComposer);
+	}
 }
 
 // ----------------------------
@@ -165,6 +239,7 @@ if ($isDevMode) {
 // ----------------------------
 // MAIN LOOP
 // ----------------------------
+$packages = [];
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 
 	if ($packageName === 'drago-ex/project-installer') continue;
@@ -174,23 +249,62 @@ foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 		continue;
 	}
 
-	// ✅ Skip packages via composer.json config
+	// Skip packages via composer.json config
 	if (($packageConfig[$packageName]['skip'] ?? false) === true) {
-		message("Skipping package (config): $packageName", '⏭️', true);
+		message("Skipping package (config): $packageName", '[skip]', true);
 		continue;
 	}
 
-	try {
-		$packagePath = InstalledVersions::getInstallPath($packageName);
+	$packagePath = InstalledVersions::getInstallPath($packageName);
+	if (!$packagePath) {
+		continue;
+	}
 
-		if ($packagePath) {
-			installPackageResources($packagePath, $destinationRoot, $allowLibraryInstall);
-		}
+	$packages[] = [
+		'name' => $packageName,
+		'path' => $packagePath,
+		'priority' => getPackagePriority($packagePath),
+	];
+}
+
+foreach ($packages as $package) {
+	try {
+		installPackageResources(
+			$package['name'],
+			$package['path'],
+			$destinationRoot,
+			$allowLibraryInstall,
+			$packageConfig[$package['name']] ?? [],
+			'copy',
+		);
 
 	} catch (Throwable $e) {
-		message("Error in $packageName: " . $e->getMessage(), '❌', true);
+		message("Error in {$package['name']}: " . $e->getMessage(), 'ERROR:', true);
 		continue;
 	}
 }
 
+usort($packages, fn(array $a, array $b): int => [$a['priority'], $a['name']] <=> [$b['priority'], $b['name']]);
+
+foreach ($packages as $package) {
+	try {
+		installPackageResources(
+			$package['name'],
+			$package['path'],
+			$destinationRoot,
+			$allowLibraryInstall,
+			$packageConfig[$package['name']] ?? [],
+			'replace',
+		);
+
+	} catch (Throwable $e) {
+		message("Error in {$package['name']}: " . $e->getMessage(), 'ERROR:', true);
+		continue;
+	}
+}
+if (!$isDevMode) {
+	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
+}
+
 echo "✔️ Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors)\n";
+
