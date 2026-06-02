@@ -7,7 +7,7 @@ $projectRoot = getcwd();
 $vendorDir = $projectRoot . '/vendor/drago-ex';
 
 if (!is_dir($vendorDir)) {
-	echo "❌ Vendor drago-ex folder does not exist.\n";
+	echo "ERROR: Vendor drago-ex folder does not exist.\n";
 	exit(1);
 }
 
@@ -26,8 +26,8 @@ foreach (glob($vendorDir . '/*', GLOB_ONLYDIR) as $packageDir) {
 	$resourceDir = $packageDir . '/resources';
 	if (is_dir($resourceDir)) {
 		deleteDir($resourceDir);
-		echo "🗑️ Deleted: $resourceDir\n";
+		echo "DELETED: $resourceDir\n";
 	}
 }
 
-echo "✅ Done.\n";
+echo "OK Done.\n";

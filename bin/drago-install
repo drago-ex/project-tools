@@ -22,7 +22,7 @@ foreach ($autoloadPaths as $path) {
 }
 
 if (!$autoloadFound) {
-	die("❌ Error: composer autoload.php not found. Run 'composer install' first.\n");
+	die("ERROR: composer autoload.php not found. Run 'composer install' first.\n");
 }
 
 $projectRoot = getcwd();
@@ -64,19 +64,19 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 	ensureDir(dirname($destination));
 
 	if (!$overwrite && $existsBefore) {
-		message($destination, '⚠️ Skipped (exists):');
+		message($destination, 'SKIP exists:');
 		$stats['skipped']++;
 		return;
 	}
 
 	if (!copy($source, $destination)) {
 		$stats['errors']++;
-		throw new RuntimeException("Failed copying $source → $destination");
+		throw new RuntimeException("Failed copying $source -> $destination");
 	}
 
 	$stats['copied']++;
-	$icon = ($overwrite && $existsBefore) ? '🔄 Replaced:' : '✅ Copied:';
-	message("$source → $destination", $icon);
+	$icon = ($overwrite && $existsBefore) ? 'REPLACED:' : 'COPIED:';
+	message("$source -> $destination", $icon);
 }
 
 function recursiveCopy(string $source, string $destination, bool $overwrite = false): void
@@ -140,7 +140,7 @@ function installPackageResources(
 			$source = $packagePath . '/' . $srcRel;
 
 			if (!file_exists($source)) {
-				message($source, '❌ Source not found:');
+				message($source, 'ERROR source not found:');
 				$stats['errors']++;
 				continue;
 			}
@@ -221,7 +221,7 @@ function markInstallOncePackages(string $rootComposerPath, array $rootComposer, 
 // ----------------------------
 $rootComposerPath = $projectRoot . '/composer.json';
 if (!file_exists($rootComposerPath)) {
-	die("❌ Error: composer.json not found in current directory.\n");
+	die("ERROR: composer.json not found in current directory.\n");
 }
 
 $rootComposer = json_decode(file_get_contents($rootComposerPath), true);
@@ -233,7 +233,7 @@ $packageConfig = $dragoConfig['packages'] ?? [];
 $rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
 
 if ($isDevMode) {
-	message("Dev mode active: redirecting output to $destinationRoot", '🚀', true);
+	message("Dev mode active: redirecting output to $destinationRoot", 'DEV:', true);
 }
 
 // ----------------------------
@@ -306,5 +306,5 @@ if (!$isDevMode) {
 	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
 }
 
-echo "✔️ Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors)\n";
+echo "OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors)\n";
 
