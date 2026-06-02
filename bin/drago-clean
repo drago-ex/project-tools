@@ -3,11 +3,15 @@
 
 declare(strict_types=1);
 
+$green = "\033[32m";
+$red = "\033[31m";
+$reset = "\033[0m";
+
 $projectRoot = getcwd();
 $vendorDir = $projectRoot . '/vendor/drago-ex';
 
 if (!is_dir($vendorDir)) {
-	echo "ERROR: Vendor drago-ex folder does not exist.\n";
+	echo "{$red}ERROR: Vendor drago-ex folder does not exist.{$reset}\n";
 	exit(1);
 }
 
@@ -26,8 +30,8 @@ foreach (glob($vendorDir . '/*', GLOB_ONLYDIR) as $packageDir) {
 	$resourceDir = $packageDir . '/resources';
 	if (is_dir($resourceDir)) {
 		deleteDir($resourceDir);
-		echo "DELETED: $resourceDir\n";
+		echo "{$green}DELETED:{$reset} $resourceDir\n";
 	}
 }
 
-echo "OK Done.\n";
+echo "{$green}OK Done.{$reset}\n";

@@ -5,6 +5,12 @@ declare(strict_types=1);
 
 use Composer\InstalledVersions;
 
+$blue = "\033[34m";
+$green = "\033[32m";
+$yellow = "\033[33m";
+$red = "\033[31m";
+$reset = "\033[0m";
+
 // Try to find composer's autoload
 $autoloadPaths = [
 		getcwd() . '/vendor/autoload.php',
@@ -22,7 +28,7 @@ foreach ($autoloadPaths as $path) {
 }
 
 if (!$autoloadFound) {
-	die("ERROR: composer autoload.php not found. Run 'composer install' first.\n");
+	die("{$red}ERROR: composer autoload.php not found. Run 'composer install' first.{$reset}\n");
 }
 
 $projectRoot = getcwd();
@@ -58,13 +64,13 @@ function ensureDir(string $dir): void
 
 function copyFile(string $source, string $destination, bool $overwrite = false): void
 {
-	global $stats;
+	global $green, $reset, $stats, $yellow;
 
 	$existsBefore = file_exists($destination);
 	ensureDir(dirname($destination));
 
 	if (!$overwrite && $existsBefore) {
-		message($destination, 'SKIP exists:');
+		message($destination, "{$yellow}SKIP exists:{$reset}");
 		$stats['skipped']++;
 		return;
 	}
@@ -75,7 +81,9 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 	}
 
 	$stats['copied']++;
-	$icon = ($overwrite && $existsBefore) ? 'REPLACED:' : 'COPIED:';
+	$icon = ($overwrite && $existsBefore)
+			? "{$green}REPLACED:{$reset}"
+			: "{$green}COPIED:{$reset}";
 	message("$source -> $destination", $icon);
 }
 
@@ -105,7 +113,7 @@ function installPackageResources(
 	?string $onlySection = null,
 ): void
 {
-	global $stats, $installOncePackages;
+	global $red, $reset, $stats, $installOncePackages;
 
 	$composerPath = $packagePath . '/composer.json';
 	if (!is_file($composerPath)) return;
@@ -140,7 +148,7 @@ function installPackageResources(
 			$source = $packagePath . '/' . $srcRel;
 
 			if (!file_exists($source)) {
-				message($source, 'ERROR source not found:');
+				message($source, "{$red}ERROR source not found:{$reset}");
 				$stats['errors']++;
 				continue;
 			}
@@ -221,7 +229,7 @@ function markInstallOncePackages(string $rootComposerPath, array $rootComposer, 
 // ----------------------------
 $rootComposerPath = $projectRoot . '/composer.json';
 if (!file_exists($rootComposerPath)) {
-	die("ERROR: composer.json not found in current directory.\n");
+	die("{$red}ERROR: composer.json not found in current directory.{$reset}\n");
 }
 
 $rootComposer = json_decode(file_get_contents($rootComposerPath), true);
@@ -233,7 +241,7 @@ $packageConfig = $dragoConfig['packages'] ?? [];
 $rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
 
 if ($isDevMode) {
-	message("Dev mode active: redirecting output to $destinationRoot", 'DEV:', true);
+	message("Dev mode active: redirecting output to $destinationRoot", "{$blue}DEV:{$reset}", true);
 }
 
 // ----------------------------
@@ -279,7 +287,7 @@ foreach ($packages as $package) {
 		);
 
 	} catch (Throwable $e) {
-		message("Error in {$package['name']}: " . $e->getMessage(), 'ERROR:', true);
+		message("Error in {$package['name']}: " . $e->getMessage(), "{$red}ERROR:{$reset}", true);
 		continue;
 	}
 }
@@ -298,7 +306,7 @@ foreach ($packages as $package) {
 		);
 
 	} catch (Throwable $e) {
-		message("Error in {$package['name']}: " . $e->getMessage(), 'ERROR:', true);
+		message("Error in {$package['name']}: " . $e->getMessage(), "{$red}ERROR:{$reset}", true);
 		continue;
 	}
 }
@@ -306,5 +314,5 @@ if (!$isDevMode) {
 	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
 }
 
-echo "OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors)\n";
+echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors){$reset}\n";
 
