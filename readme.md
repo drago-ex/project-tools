@@ -1,4 +1,4 @@
-# Drago Project Installer
+# Drago Project Tools
 
 Tools for automatic installation and cleanup of project resources from Composer packages.
 
