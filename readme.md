@@ -28,6 +28,8 @@ In your package's `composer.json`, define what should be installed:
                 "resources/Permission": "app/Core/Permission",
                 "resources/assets": "assets/naja"
             },
+            "replace-once": true,
+            "replace-priority": 100,
             "replace": {
                 "resources/config/overrides.neon": "app/config/overrides.neon"
             }
@@ -67,7 +69,7 @@ To skip a specific package during installation, add it to the `packages` map in 
 }
 ```
 
-When `skip` is set to `true`, the package is ignored entirely — neither `copy` nor `replace` will run for it.
+When `skip` is set to `true`, the package is ignored entirely - neither `copy` nor `replace` will run for it.
 
 ### Skipping Only Copy or Replace
 You can also skip only one install section for a package:
@@ -92,13 +94,13 @@ You can also skip only one install section for a package:
 This is useful for preset packages where files should be overwritten once during initial project composition, but not overwritten again on later Composer updates.
 
 ### Install Once
-Packages that contain `replace` rules can mark themselves as install-once:
+Packages that contain `replace` rules can mark themselves as replace-once:
 
 ```json
 "extra": {
     "drago-project": {
-        "install-once": true,
         "install": {
+            "replace-once": true,
             "replace": {
                 "resources/app": "app",
                 "resources/assets": "assets"
@@ -124,7 +126,7 @@ After a successful `replace` run, `drago-install` writes this to the root projec
 
 The next run keeps the package installed, but skips its `replace` section. The safer `copy` section can still run unless `skip-copy` or `skip` is also enabled.
 
-`install-once` is not applied in `--dev` mode.
+`replace-once` is not applied in `--dev` mode.
 
 ### Replace Priority
 The installer runs in two phases:
@@ -137,7 +139,9 @@ Priority is configured in the package `composer.json`:
 ```json
 "extra": {
     "drago-project": {
-        "priority": 200
+        "install": {
+            "replace-priority": 200
+        }
     }
 }
 ```
@@ -191,8 +195,8 @@ vendor/bin/drago-clean
 2. It resolves relative paths against the package root and the current working directory.
 3. It skips packages listed under `extra.drago-project.packages` in the root `composer.json` with `"skip": true`.
 4. It runs all `copy` sections first.
-5. It runs `replace` sections afterwards, sorted by `extra.drago-project.priority`.
+5. It runs `replace` sections afterwards, sorted by `install.replace-priority`.
 6. It can skip only `copy` or `replace` sections with `skip-copy` and `skip-replace`.
 7. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
-8. Packages marked with `install-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
+8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
 9. `drago-clean` specifically targets `vendor/drago-ex` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
