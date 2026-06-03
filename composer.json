@@ -5,7 +5,8 @@
 	"license": "MIT",
 	"bin": [
 		"bin/drago-install",
-		"bin/drago-clean"
+		"bin/drago-clean",
+		"bin/drago-setup"
 	],
 	"require": {
 		"php": ">=8.3",

@@ -5,6 +5,7 @@ Tools for automatic installation and cleanup of project resources from Composer 
 ## Features
 - **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
 - **`drago-clean`**: Cleans up redundant resource folders in `vendor/drago-ex` to prevent class duplication or namespace collisions.
+- **`drago-setup`**: Collects and runs setup commands provided by installed Drago packages.
 
 ## Installation
 Add the package to your project:
@@ -184,11 +185,68 @@ You can also run the commands manually from your terminal:
 ```bash
 vendor/bin/drago-install
 vendor/bin/drago-clean
+vendor/bin/drago-setup
 ```
 
 ### Options
 - `--verbose` or `-v`: Show detailed file-by-file progress during installation.
 - `--dev`: Switches the destination directory to `resources/` in the current working directory. Useful for testing installation logic during package development.
+
+## Setup Commands
+
+Packages can expose setup commands in `extra.drago-project.commands`.
+These commands can be used for database migrations, generated permission classes or any other post-installation task.
+
+```json
+"extra": {
+    "drago-project": {
+        "commands-priority": 10,
+        "commands": {
+            "db:migrate-auth": "php vendor/bin/migration db:migrate vendor/drago-ex/project-auth/migrations",
+            "create:auth-permission": "php vendor/bin/create-auth-permission"
+        }
+    }
+}
+```
+
+Run the setup tool from the project root:
+
+```bash
+vendor/bin/drago-setup
+```
+
+Inside Docker, run it as the web user:
+
+```bash
+docker compose exec -u www-data server php vendor/bin/drago-setup
+```
+
+### Command Priority
+
+The package-level `commands-priority` value controls the order of setup commands from that package.
+Lower priority runs earlier. Default priority is `100`.
+
+Commands are sorted in two groups:
+
+1. Commands with labels starting with `db:` run first.
+   Use this prefix for database migrations and other database setup tasks.
+2. All other commands run afterwards, for example `create:*`, `generate:*` or `get:*`.
+
+Inside each group, commands are sorted by `commands-priority` first and by command label alphabetically second.
+This keeps migrations before application setup while still making the console order predictable.
+
+Command values can be plain strings. Object values are also supported for readability.
+Supported object keys are `run`, `command` and `bin`; `run` is the preferred form.
+
+### Setup Interaction
+
+- Select specific tasks by number, for example `1,3`.
+- Enter `a` to run all tasks sequentially.
+- Enter `q` to quit.
+
+`drago-setup` does not inspect the database or Nette container.
+It only discovers package commands and executes the selected shell command.
+Database-specific behavior, such as creating the `migrations` table, belongs to the migration command itself.
 
 ## How it works
 1. `drago-install` scans all installed packages for the `extra.drago-project.install` configuration.
@@ -200,3 +258,4 @@ vendor/bin/drago-clean
 7. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
 8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
 9. `drago-clean` specifically targets `vendor/drago-ex` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
+10. `drago-setup` scans installed packages for `extra.drago-project.commands` and runs selected setup commands in priority order.
