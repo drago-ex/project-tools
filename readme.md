@@ -69,7 +69,7 @@ To skip a specific package during installation, add it to the `packages` map in 
 }
 ```
 
-When `skip` is set to `true`, the package is ignored entirely — neither `copy` nor `replace` will run for it.
+When `skip` is set to `true`, the package is ignored entirely - neither `copy` nor `replace` will run for it.
 
 ### Skipping Only Copy or Replace
 You can also skip only one install section for a package:
