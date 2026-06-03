@@ -172,7 +172,7 @@ function installPackageResources(
 
 	if (
 		($onlySection === null || $onlySection === 'replace')
-		&& ($dragoConfig['install-once'] ?? false) === true
+		&& isReplaceOnce($dragoConfig)
 		&& $hasReplace
 		&& $stats['errors'] === $errorsBefore
 	) {
@@ -180,7 +180,13 @@ function installPackageResources(
 	}
 }
 
-function getPackagePriority(string $packagePath): int
+function isReplaceOnce(array $dragoConfig): bool
+{
+	$installConfig = $dragoConfig['install'] ?? [];
+	return (bool) ($installConfig['replace-once'] ?? false);
+}
+
+function getPackageReplacePriority(string $packagePath): int
 {
 	$composerPath = $packagePath . '/composer.json';
 	if (!is_file($composerPath)) {
@@ -188,7 +194,9 @@ function getPackagePriority(string $packagePath): int
 	}
 
 	$composer = json_decode(file_get_contents($composerPath), true);
-	return (int) ($composer['extra']['drago-project']['priority'] ?? 100);
+	$dragoConfig = $composer['extra']['drago-project'] ?? [];
+	$installConfig = $dragoConfig['install'] ?? [];
+	return (int) ($installConfig['replace-priority'] ?? 100);
 }
 
 function writeRootComposer(string $rootComposerPath, array $rootComposer): void
@@ -271,7 +279,7 @@ foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 	$packages[] = [
 		'name' => $packageName,
 		'path' => $packagePath,
-		'priority' => getPackagePriority($packagePath),
+		'priority' => getPackageReplacePriority($packagePath),
 	];
 }
 
@@ -315,4 +323,3 @@ if (!$isDevMode) {
 }
 
 echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors){$reset}\n";
-
