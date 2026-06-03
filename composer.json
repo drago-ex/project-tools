@@ -1,5 +1,5 @@
 {
-	"name": "drago-ex/project-installer",
+	"name": "drago-ex/project-tools",
 	"description": "Installation and cleanup tools for Drago projects.",
 	"type": "library",
 	"license": "MIT",
