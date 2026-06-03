@@ -9,11 +9,11 @@ Tools for automatic installation and cleanup of project resources from Composer 
 ## Installation
 Add the package to your project:
 ```bash
-composer require drago-ex/project-installer
+composer require drago-ex/project-tools
 ```
 For component development, add it to `require-dev`:
 ```bash
-composer require --dev drago-ex/project-installer
+composer require --dev drago-ex/project-tools
 ```
 
 ## Configuration
