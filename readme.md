@@ -4,7 +4,7 @@ Tools for automatic installation and cleanup of project resources from Composer 
 
 ## Features
 - **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
-- **`drago-clean`**: Cleans up redundant resource folders in `vendor/drago-ex` to prevent class duplication or namespace collisions.
+- **`drago-clean`**: Cleans up redundant resource folders in configured vendor folders to prevent class duplication or namespace collisions.
 - **`drago-setup`**: Collects and runs setup commands provided by installed Drago packages.
 
 ## Installation
@@ -22,8 +22,9 @@ composer require --dev drago-ex/project-tools
 In your package's `composer.json`, define what should be installed:
 
 ```json
+"type": "drago-tools-resource",
 "extra": {
-    "drago-project": {
+    "drago-tools": {
         "install": {
             "copy": {
                 "resources/Permission": "app/Core/Permission",
@@ -40,16 +41,27 @@ In your package's `composer.json`, define what should be installed:
 ```
 
 ### Global Options
-To allow installation from packages with the default type `library`, enable this flag in your **root** `composer.json`:
+Configure trusted Composer vendors in your **root** `composer.json`:
 
 ```json
 "extra": {
-    "drago-project": {
+    "drago-tools": {
+        "vendor-names": ["drago-ex", "netis-cms"],
         "allow-library-install": true
     }
 }
 ```
-*Note: For security, only packages of type `drago-project-resource` are allowed to install resources by default. Use this flag to enable mirroring for standard libraries.*
+
+`vendor-names` limits which packages are scanned by `drago-install`, `drago-clean` and `drago-setup`.
+Default value is `["drago-ex"]`.
+
+If a configured vendor folder does not exist in `vendor/`, the tools print a warning:
+
+```text
+WARN Vendor name not found: vendor-name
+```
+
+*Note: For security, only packages of type `drago-tools-resource` are allowed to install resources by default. Use `allow-library-install` to enable mirroring for standard libraries from configured vendors.*
 
 ### Sections:
 - **`copy`**: Copies files only if they do not already exist in the destination. Safe for initial setup.
@@ -60,7 +72,7 @@ To skip a specific package during installation, add it to the `packages` map in 
 
 ```json
 "extra": {
-    "drago-project": {
+    "drago-tools": {
         "packages": {
             "vendor/package-name": {
                 "skip": true
@@ -77,7 +89,7 @@ You can also skip only one install section for a package:
 
 ```json
 "extra": {
-    "drago-project": {
+    "drago-tools": {
         "packages": {
             "vendor/package-name": {
                 "skip-copy": true,
@@ -99,7 +111,7 @@ Packages that contain `replace` rules can mark themselves as replace-once:
 
 ```json
 "extra": {
-    "drago-project": {
+    "drago-tools": {
         "install": {
             "replace-once": true,
             "replace": {
@@ -115,7 +127,7 @@ After a successful `replace` run, `drago-install` writes this to the root projec
 
 ```json
 "extra": {
-    "drago-project": {
+    "drago-tools": {
         "packages": {
             "vendor/package-name": {
                 "skip-replace": true
@@ -139,7 +151,7 @@ Priority is configured in the package `composer.json`:
 
 ```json
 "extra": {
-    "drago-project": {
+    "drago-tools": {
         "install": {
             "replace-priority": 200
         }
@@ -188,18 +200,26 @@ vendor/bin/drago-clean
 vendor/bin/drago-setup
 ```
 
+### Cleanup
+
+`drago-clean` removes `resources/` directories from packages in configured vendor folders after their files have been copied or replaced into the project.
+
+This is useful when resource folders contain PHP classes or other files that are mirrored into the project. Leaving the same classes both in `vendor/` and in the project can cause duplicate class or namespace conflicts.
+
+Only package resource folders are removed. Installed Composer packages remain installed.
+
 ### Options
 - `--verbose` or `-v`: Show detailed file-by-file progress during installation.
 - `--dev`: Switches the destination directory to `resources/` in the current working directory. Useful for testing installation logic during package development.
 
 ## Setup Commands
 
-Packages can expose setup commands in `extra.drago-project.commands`.
+Packages can expose setup commands in `extra.drago-tools.commands`.
 These commands can be used for database migrations, generated permission classes or any other post-installation task.
 
 ```json
 "extra": {
-    "drago-project": {
+    "drago-tools": {
         "commands-priority": 10,
         "commands": {
             "db:migrate-auth": "php vendor/bin/migration db:migrate vendor/drago-ex/project-auth/migrations",
@@ -249,13 +269,13 @@ It only discovers package commands and executes the selected shell command.
 Database-specific behavior, such as creating the `migrations` table, belongs to the migration command itself.
 
 ## How it works
-1. `drago-install` scans all installed packages for the `extra.drago-project.install` configuration.
+1. `drago-install` scans configured vendors for the `extra.drago-tools.install` configuration.
 2. It resolves relative paths against the package root and the current working directory.
-3. It skips packages listed under `extra.drago-project.packages` in the root `composer.json` with `"skip": true`.
+3. It skips packages listed under `extra.drago-tools.packages` in the root `composer.json` with `"skip": true`.
 4. It runs all `copy` sections first.
 5. It runs `replace` sections afterwards, sorted by `install.replace-priority`.
 6. It can skip only `copy` or `replace` sections with `skip-copy` and `skip-replace`.
 7. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
 8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
-9. `drago-clean` specifically targets `vendor/drago-ex` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
-10. `drago-setup` scans installed packages for `extra.drago-project.commands` and runs selected setup commands in priority order.
+9. `drago-clean` targets configured `vendor-names` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
+10. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order.

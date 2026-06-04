@@ -10,6 +10,8 @@ $green = "\033[32m";
 $yellow = "\033[33m";
 $red = "\033[31m";
 $reset = "\033[0m";
+const ToolsExtraKey = 'drago-tools';
+const DefaultVendorNames = ['drago-ex'];
 
 $autoloadPaths = [
 	getcwd() . '/vendor/autoload.php',
@@ -28,6 +30,48 @@ foreach ($autoloadPaths as $path) {
 
 if (!$autoloadFound) {
 	die("{$red}ERROR: composer autoload.php not found. Run 'composer install' first.{$reset}\n");
+}
+
+function normalizeVendorNames(mixed $vendorNames): array
+{
+	if (is_string($vendorNames) && $vendorNames !== '') {
+		return [$vendorNames];
+	}
+
+	if (!is_array($vendorNames)) {
+		return DefaultVendorNames;
+	}
+
+	$normalized = [];
+	foreach ($vendorNames as $vendorName) {
+		if (is_string($vendorName) && $vendorName !== '') {
+			$normalized[] = trim($vendorName, '/');
+		}
+	}
+
+	return $normalized !== [] ? array_values(array_unique($normalized)) : DefaultVendorNames;
+}
+
+function isAllowedVendor(string $packageName, array $vendorNames): bool
+{
+	foreach ($vendorNames as $vendorName) {
+		if (str_starts_with($packageName, $vendorName . '/')) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function warnMissingVendorNames(string $projectRoot, array $vendorNames): void
+{
+	global $yellow, $reset;
+
+	foreach ($vendorNames as $vendorName) {
+		if (!is_dir($projectRoot . '/vendor/' . $vendorName)) {
+			echo "{$yellow}WARN Vendor name not found: {$vendorName}{$reset}\n";
+		}
+	}
 }
 
 function normalizeSetupCommand(mixed $command): ?string
@@ -77,8 +121,30 @@ function sortSetupCommands(array $commands): array
 }
 
 $availableCommands = [];
+$projectRoot = getcwd();
+$rootComposerPath = $projectRoot . '/composer.json';
+if (!is_file($rootComposerPath)) {
+	die("{$red}ERROR: composer.json not found in current directory.{$reset}\n");
+}
+
+$rootComposer = json_decode((string) file_get_contents($rootComposerPath), true);
+if (!is_array($rootComposer)) {
+	die("{$red}ERROR: composer.json is not valid JSON.{$reset}\n");
+}
+
+$rootConfig = $rootComposer['extra'][ToolsExtraKey] ?? [];
+if (!is_array($rootConfig)) {
+	$rootConfig = [];
+}
+
+$vendorNames = normalizeVendorNames($rootConfig['vendor-names'] ?? DefaultVendorNames);
+warnMissingVendorNames($projectRoot, $vendorNames);
 
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
+	if (!isAllowedVendor($packageName, $vendorNames)) {
+		continue;
+	}
+
 	$path = InstalledVersions::getInstallPath($packageName);
 	if (!$path || !is_file($path . '/composer.json')) {
 		continue;
@@ -89,7 +155,7 @@ foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 		continue;
 	}
 
-	$extra = $composer['extra']['drago-project'] ?? [];
+	$extra = $composer['extra'][ToolsExtraKey] ?? [];
 	if (!is_array($extra)) {
 		continue;
 	}

@@ -46,6 +46,9 @@ $destinationRoot = $isDevMode ? $projectRoot . '/resources' : $projectRoot;
 
 $stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
 $installOncePackages = [];
+const ToolsExtraKey = 'drago-tools';
+const ResourcePackageType = 'drago-tools-resource';
+const DefaultVendorNames = ['drago-ex'];
 
 function message(string $msg, string $icon = '', bool $force = false): void
 {
@@ -104,6 +107,48 @@ function recursiveCopy(string $source, string $destination, bool $overwrite = fa
 	}
 }
 
+function normalizeVendorNames(mixed $vendorNames): array
+{
+	if (is_string($vendorNames) && $vendorNames !== '') {
+		return [$vendorNames];
+	}
+
+	if (!is_array($vendorNames)) {
+		return DefaultVendorNames;
+	}
+
+	$normalized = [];
+	foreach ($vendorNames as $vendorName) {
+		if (is_string($vendorName) && $vendorName !== '') {
+			$normalized[] = trim($vendorName, '/');
+		}
+	}
+
+	return $normalized !== [] ? array_values(array_unique($normalized)) : DefaultVendorNames;
+}
+
+function isAllowedVendor(string $packageName, array $vendorNames): bool
+{
+	foreach ($vendorNames as $vendorName) {
+		if (str_starts_with($packageName, $vendorName . '/')) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function warnMissingVendorNames(string $projectRoot, array $vendorNames): void
+{
+	global $yellow, $reset;
+
+	foreach ($vendorNames as $vendorName) {
+		if (!is_dir($projectRoot . '/vendor/' . $vendorName)) {
+			echo "{$yellow}WARN Vendor name not found: {$vendorName}{$reset}\n";
+		}
+	}
+}
+
 function installPackageResources(
 	string $packageName,
 	string $packagePath,
@@ -119,14 +164,14 @@ function installPackageResources(
 	if (!is_file($composerPath)) return;
 
 	$composer = json_decode(file_get_contents($composerPath), true);
-	$dragoConfig = $composer['extra']['drago-project'] ?? [];
+	$dragoConfig = $composer['extra'][ToolsExtraKey] ?? [];
 	$install = $dragoConfig['install'] ?? [];
 	$sections = ['copy' => false, 'replace' => true];
 
 	$type = $composer['type'] ?? 'library';
-	if ($type === 'library' && !$allowLibraryInstall && (!empty($install['copy']) || !empty($install['replace']))) {
-		return;
-	}
+	$hasInstallRules = !empty($install['copy']) || !empty($install['replace']);
+	$isAllowedType = $type === ResourcePackageType || ($type === 'library' && $allowLibraryInstall);
+	if ($hasInstallRules && !$isAllowedType) return;
 
 	$hasReplace = !empty($install['replace']);
 	$errorsBefore = $stats['errors'];
@@ -194,7 +239,7 @@ function getPackageReplacePriority(string $packagePath): int
 	}
 
 	$composer = json_decode(file_get_contents($composerPath), true);
-	$dragoConfig = $composer['extra']['drago-project'] ?? [];
+	$dragoConfig = $composer['extra'][ToolsExtraKey] ?? [];
 	$installConfig = $dragoConfig['install'] ?? [];
 	return (int) ($installConfig['replace-priority'] ?? 100);
 }
@@ -217,12 +262,12 @@ function markInstallOncePackages(string $rootComposerPath, array $rootComposer, 
 
 	$changed = false;
 	foreach (array_unique($packageNames) as $packageName) {
-		$current = $rootComposer['extra']['drago-project']['packages'][$packageName]['skip-replace'] ?? false;
+		$current = $rootComposer['extra'][ToolsExtraKey]['packages'][$packageName]['skip-replace'] ?? false;
 		if ($current === true) {
 			continue;
 		}
 
-		$rootComposer['extra']['drago-project']['packages'][$packageName]['skip-replace'] = true;
+		$rootComposer['extra'][ToolsExtraKey]['packages'][$packageName]['skip-replace'] = true;
 		$changed = true;
 		message("Marked package replace section as install-once: $packageName", '[once]', true);
 	}
@@ -240,11 +285,16 @@ if (!file_exists($rootComposerPath)) {
 	die("{$red}ERROR: composer.json not found in current directory.{$reset}\n");
 }
 
-$rootComposer = json_decode(file_get_contents($rootComposerPath), true);
+$rootComposer = json_decode((string) file_get_contents($rootComposerPath), true);
+if (!is_array($rootComposer)) {
+	die("{$red}ERROR: composer.json is not valid JSON.{$reset}\n");
+}
 
-$dragoConfig = $rootComposer['extra']['drago-project'] ?? [];
+$dragoConfig = $rootComposer['extra'][ToolsExtraKey] ?? [];
 $allowLibraryInstall = $dragoConfig['allow-library-install'] ?? false;
 $packageConfig = $dragoConfig['packages'] ?? [];
+$vendorNames = normalizeVendorNames($dragoConfig['vendor-names'] ?? DefaultVendorNames);
+warnMissingVendorNames($projectRoot, $vendorNames);
 
 $rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
 
@@ -258,10 +308,12 @@ if ($isDevMode) {
 $packages = [];
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 
-	if ($packageName === 'drago-ex/project-installer') continue;
-
 	// Skip root package
 	if ($packageName === $rootPackageName) {
+		continue;
+	}
+
+	if (!isAllowedVendor($packageName, $vendorNames)) {
 		continue;
 	}
 
