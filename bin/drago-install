@@ -65,6 +65,26 @@ function ensureDir(string $dir): void
 	}
 }
 
+function assertSafeRelativePath(string $path, string $label): void
+{
+	$normalized = str_replace('\\', '/', $path);
+	if (
+		$normalized === ''
+		|| str_starts_with($normalized, '/')
+		|| preg_match('~^[A-Za-z]:/~', $normalized) === 1
+		|| in_array('..', explode('/', $normalized), true)
+	) {
+		throw new RuntimeException("Unsafe $label path: $path");
+	}
+}
+
+function assertSafeVendorName(string $vendorName): void
+{
+	if (preg_match('~^[a-z0-9][a-z0-9._-]*$~', $vendorName) !== 1) {
+		throw new RuntimeException("Unsafe vendor name: $vendorName");
+	}
+}
+
 function copyFile(string $source, string $destination, bool $overwrite = false): void
 {
 	global $green, $reset, $stats, $yellow;
@@ -120,7 +140,9 @@ function normalizeVendorNames(mixed $vendorNames): array
 	$normalized = [];
 	foreach ($vendorNames as $vendorName) {
 		if (is_string($vendorName) && $vendorName !== '') {
-			$normalized[] = trim($vendorName, '/');
+			$vendorName = trim($vendorName, '/');
+			assertSafeVendorName($vendorName);
+			$normalized[] = $vendorName;
 		}
 	}
 
@@ -190,6 +212,11 @@ function installPackageResources(
 		if (!$items) continue;
 
 		foreach ($items as $srcRel => $dstRel) {
+			assertSafeRelativePath((string) $srcRel, 'source');
+			if ($dstRel !== '') {
+				assertSafeRelativePath((string) $dstRel, 'destination');
+			}
+
 			$source = $packagePath . '/' . $srcRel;
 
 			if (!file_exists($source)) {

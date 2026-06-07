@@ -28,7 +28,9 @@ if (!is_array($rootComposer)) {
 function normalizeVendorNames(mixed $vendorNames): array
 {
 	if (is_string($vendorNames) && $vendorNames !== '') {
-		return [$vendorNames];
+		$vendorName = trim($vendorNames, '/');
+		assertSafeVendorName($vendorName);
+		return [$vendorName];
 	}
 
 	if (!is_array($vendorNames)) {
@@ -38,11 +40,20 @@ function normalizeVendorNames(mixed $vendorNames): array
 	$normalized = [];
 	foreach ($vendorNames as $vendorName) {
 		if (is_string($vendorName) && $vendorName !== '') {
-			$normalized[] = trim($vendorName, '/');
+			$vendorName = trim($vendorName, '/');
+			assertSafeVendorName($vendorName);
+			$normalized[] = $vendorName;
 		}
 	}
 
 	return $normalized !== [] ? array_values(array_unique($normalized)) : DefaultVendorNames;
+}
+
+function assertSafeVendorName(string $vendorName): void
+{
+	if (preg_match('~^[a-z0-9][a-z0-9._-]*$~', $vendorName) !== 1) {
+		throw new RuntimeException("Unsafe vendor name: $vendorName");
+	}
 }
 
 function deleteDir(string $dir): void
