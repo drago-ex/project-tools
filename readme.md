@@ -67,6 +67,8 @@ WARN Vendor name not found: vendor-name
 - **`copy`**: Copies files only if they do not already exist in the destination. Safe for initial setup.
 - **`replace`**: Always overwrites the destination files. Useful for core updates or shared assets.
 
+Source and destination paths must be relative paths inside the package and project. Absolute paths and paths containing `..` are rejected.
+
 ### Skipping Packages
 To skip a specific package during installation, add it to the `packages` map in your **root** `composer.json`:
 
