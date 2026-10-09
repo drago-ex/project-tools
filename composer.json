@@ -3,13 +3,13 @@
 	"description": "Installation and cleanup tools for Drago projects.",
 	"type": "library",
 	"license": "MIT",
+	"require": {
+		"php": ">=8.3",
+		"composer-runtime-api": "^2.0"
+	},
 	"bin": [
 		"bin/drago-install",
 		"bin/drago-clean",
 		"bin/drago-setup"
-	],
-	"require": {
-		"php": ">=8.3",
-		"composer-runtime-api": "^2.0"
-	}
+	]
 }
