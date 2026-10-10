@@ -56,16 +56,34 @@ function assertSafeVendorName(string $vendorName): void
 	}
 }
 
+function normalizePathForComparison(string $path): string
+{
+	$path = rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path), DIRECTORY_SEPARATOR);
+	return PHP_OS_FAMILY === 'Windows' ? strtolower($path) : $path;
+}
+
+function isRedirectedPath(string $path): bool
+{
+	$realPath = realpath($path);
+	return $realPath !== false && normalizePathForComparison($path) !== normalizePathForComparison($realPath);
+}
+
 function deleteDir(string $dir): void
 {
-	if (!is_dir($dir)) {
+	if (!is_dir($dir) || isRedirectedPath($dir)) {
 		return;
 	}
 
 	$files = array_diff(scandir($dir), ['.', '..']);
 	foreach ($files as $file) {
 		$path = $dir . '/' . $file;
-		is_dir($path) ? deleteDir($path) : unlink($path);
+		if (is_dir($path)) {
+			if (!isRedirectedPath($path)) {
+				deleteDir($path);
+			}
+		} else {
+			unlink($path);
+		}
 	}
 
 	rmdir($dir);
@@ -87,8 +105,16 @@ foreach ($vendorNames as $vendorName) {
 	}
 
 	foreach (glob($vendorDir . '/*', GLOB_ONLYDIR) as $packageDir) {
+		if (isRedirectedPath($packageDir)) {
+			continue;
+		}
+
 		$resourceDir = $packageDir . '/resources';
 		if (is_dir($resourceDir)) {
+			if (isRedirectedPath($resourceDir)) {
+				continue;
+			}
+
 			deleteDir($resourceDir);
 			echo "{$green}DELETED:{$reset} $resourceDir\n";
 		}
