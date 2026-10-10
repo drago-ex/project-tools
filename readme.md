@@ -220,6 +220,24 @@ This is useful when resource folders contain PHP classes or other files that are
 
 Only package resource folders are removed. Installed Composer packages remain installed.
 
+Packages installed from local Composer `path` repositories may be symlinked into `vendor/`. In that case, `drago-clean` leaves their resource folders in place so it does not delete files from the source package. This also applies to directory junctions used for symlinks on Windows. Resource folders in regular package copies under `vendor/` are still removed.
+
+To test a local package as it behaves after a regular installation, configure the path repository to mirror packages instead of symlinking them:
+
+```json
+"repositories": [
+    {
+        "type": "path",
+        "url": "../packages/*",
+        "options": {
+            "symlink": false
+        }
+    }
+]
+```
+
+With `symlink: false`, Composer copies packages into `vendor/`, so `drago-clean` can remove only the copied resource folders while preserving the source repositories.
+
 ### Options
 
 - `--verbose` or `-v`: Show detailed file-by-file progress during installation.
