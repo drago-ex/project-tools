@@ -2,6 +2,15 @@
 
 Tools for automatic installation and cleanup of project resources from Composer packages.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/drago-ex/project-tools/blob/main/license)
+[![PHP version](https://badge.fury.io/ph/drago-ex%2Fproject-tools.svg)](https://badge.fury.io/ph/drago-ex%2Fproject-tools)
+[![Coding Style](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml/badge.svg)](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml)
+
+## Requirements
+
+- PHP >= 8.3
+- Composer 2
+
 ## Features
 
 - **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
