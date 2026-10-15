@@ -32,6 +32,7 @@ if (!$autoloadFound) {
 	die("{$red}ERROR: composer autoload.php not found. Run 'composer install' first.{$reset}\n");
 }
 
+
 function normalizeVendorNames(mixed $vendorNames): array
 {
 	if (is_string($vendorNames) && $vendorNames !== '') {
@@ -56,12 +57,14 @@ function normalizeVendorNames(mixed $vendorNames): array
 	return $normalized !== [] ? array_values(array_unique($normalized)) : DefaultVendorNames;
 }
 
+
 function assertSafeVendorName(string $vendorName): void
 {
 	if (preg_match('~^[a-z0-9][a-z0-9._-]*$~', $vendorName) !== 1) {
 		throw new RuntimeException("Unsafe vendor name: $vendorName");
 	}
 }
+
 
 function isAllowedVendor(string $packageName, array $vendorNames): bool
 {
@@ -74,16 +77,16 @@ function isAllowedVendor(string $packageName, array $vendorNames): bool
 	return false;
 }
 
+
 function warnMissingVendorNames(string $projectRoot, array $vendorNames): void
 {
-	global $yellow, $reset;
-
 	foreach ($vendorNames as $vendorName) {
 		if (!is_dir($projectRoot . '/vendor/' . $vendorName)) {
-			echo "{$yellow}WARN Vendor name not found: {$vendorName}{$reset}\n";
+			echo "{$GLOBALS['yellow']}WARN Vendor name not found: {$vendorName}{$GLOBALS['reset']}\n";
 		}
 	}
 }
+
 
 function normalizeSetupCommand(mixed $command): ?string
 {
@@ -102,6 +105,7 @@ function normalizeSetupCommand(mixed $command): ?string
 
 	return $run;
 }
+
 
 /** @param array<string, array{priority: int}> $commands */
 function sortSetupCommands(array $commands): array
@@ -130,6 +134,7 @@ function sortSetupCommands(array $commands): array
 
 	return $commands;
 }
+
 
 $availableCommands = [];
 $projectRoot = getcwd();
@@ -216,7 +221,7 @@ foreach ($availableCommands as $label => $data) {
 		$label,
 		$blue,
 		$data['package'],
-		$reset
+		$reset,
 	);
 
 	$map[$index] = [

@@ -13,9 +13,9 @@ $reset = "\033[0m";
 
 // Try to find composer's autoload
 $autoloadPaths = [
-		getcwd() . '/vendor/autoload.php',
-		__DIR__ . '/../../../autoload.php',
-		__DIR__ . '/../vendor/autoload.php',
+	getcwd() . '/vendor/autoload.php',
+	__DIR__ . '/../../../autoload.php',
+	__DIR__ . '/../vendor/autoload.php',
 ];
 
 $autoloadFound = false;
@@ -38,8 +38,8 @@ $projectRoot = getcwd();
  * --verbose / -v : prints detailed information about copying
  * --dev          : switches the destination directory to resources/ for testing during package development
  */
-$verbose = in_array('--verbose', $argv) || in_array('-v', $argv);
-$isDevMode = in_array('--dev', $argv);
+$verbose = in_array('--verbose', $argv, true) || in_array('-v', $argv, true);
+$isDevMode = in_array('--dev', $argv, true);
 
 // If we are in dev mode, the target is not the project root, but the resources folder in the current package
 $destinationRoot = $isDevMode ? $projectRoot . '/resources' : $projectRoot;
@@ -50,13 +50,14 @@ const ToolsExtraKey = 'drago-tools';
 const ResourcePackageType = 'drago-tools-resource';
 const DefaultVendorNames = ['drago-ex'];
 
+
 function message(string $msg, string $icon = '', bool $force = false): void
 {
-	global $verbose;
-	if ($verbose || $force) {
+	if ($GLOBALS['verbose'] || $force) {
 		echo $icon . ' ' . $msg . "\n";
 	}
 }
+
 
 function ensureDir(string $dir): void
 {
@@ -64,6 +65,7 @@ function ensureDir(string $dir): void
 		throw new RuntimeException("Cannot create directory: $dir");
 	}
 }
+
 
 function assertSafeRelativePath(string $path, string $label): void
 {
@@ -78,6 +80,7 @@ function assertSafeRelativePath(string $path, string $label): void
 	}
 }
 
+
 function assertSafeVendorName(string $vendorName): void
 {
 	if (preg_match('~^[a-z0-9][a-z0-9._-]*$~', $vendorName) !== 1) {
@@ -85,36 +88,36 @@ function assertSafeVendorName(string $vendorName): void
 	}
 }
 
+
 function copyFile(string $source, string $destination, bool $overwrite = false): void
 {
-	global $green, $reset, $stats, $yellow;
-
 	$existsBefore = file_exists($destination);
 	ensureDir(dirname($destination));
 
 	if (!$overwrite && $existsBefore) {
-		message($destination, "{$yellow}SKIP exists:{$reset}");
-		$stats['skipped']++;
+		message($destination, "{$GLOBALS['yellow']}SKIP exists:{$GLOBALS['reset']}");
+		$GLOBALS['stats']['skipped']++;
 		return;
 	}
 
 	if (!copy($source, $destination)) {
-		$stats['errors']++;
+		$GLOBALS['stats']['errors']++;
 		throw new RuntimeException("Failed copying $source -> $destination");
 	}
 
-	$stats['copied']++;
+	$GLOBALS['stats']['copied']++;
 	$icon = ($overwrite && $existsBefore)
-			? "{$green}REPLACED:{$reset}"
-			: "{$green}COPIED:{$reset}";
+			? "{$GLOBALS['green']}REPLACED:{$GLOBALS['reset']}"
+			: "{$GLOBALS['green']}COPIED:{$GLOBALS['reset']}";
 	message("$source -> $destination", $icon);
 }
+
 
 function recursiveCopy(string $source, string $destination, bool $overwrite = false): void
 {
 	$iterator = new RecursiveIteratorIterator(
-			new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
-			RecursiveIteratorIterator::SELF_FIRST
+		new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
+		RecursiveIteratorIterator::SELF_FIRST,
 	);
 
 	foreach ($iterator as $item) {
@@ -126,6 +129,7 @@ function recursiveCopy(string $source, string $destination, bool $overwrite = fa
 		}
 	}
 }
+
 
 function normalizeVendorNames(mixed $vendorNames): array
 {
@@ -149,6 +153,7 @@ function normalizeVendorNames(mixed $vendorNames): array
 	return $normalized !== [] ? array_values(array_unique($normalized)) : DefaultVendorNames;
 }
 
+
 function isAllowedVendor(string $packageName, array $vendorNames): bool
 {
 	foreach ($vendorNames as $vendorName) {
@@ -160,16 +165,16 @@ function isAllowedVendor(string $packageName, array $vendorNames): bool
 	return false;
 }
 
+
 function warnMissingVendorNames(string $projectRoot, array $vendorNames): void
 {
-	global $yellow, $reset;
-
 	foreach ($vendorNames as $vendorName) {
 		if (!is_dir($projectRoot . '/vendor/' . $vendorName)) {
-			echo "{$yellow}WARN Vendor name not found: {$vendorName}{$reset}\n";
+			echo "{$GLOBALS['yellow']}WARN Vendor name not found: {$vendorName}{$GLOBALS['reset']}\n";
 		}
 	}
 }
+
 
 function installPackageResources(
 	string $packageName,
@@ -180,10 +185,10 @@ function installPackageResources(
 	?string $onlySection = null,
 ): void
 {
-	global $red, $reset, $stats, $installOncePackages;
-
 	$composerPath = $packagePath . '/composer.json';
-	if (!is_file($composerPath)) return;
+	if (!is_file($composerPath)) {
+		return;
+	}
 
 	$composer = json_decode(file_get_contents($composerPath), true);
 	$dragoConfig = $composer['extra'][ToolsExtraKey] ?? [];
@@ -193,10 +198,12 @@ function installPackageResources(
 	$type = $composer['type'] ?? 'library';
 	$hasInstallRules = !empty($install['copy']) || !empty($install['replace']);
 	$isAllowedType = $type === ResourcePackageType || ($type === 'library' && $allowLibraryInstall);
-	if ($hasInstallRules && !$isAllowedType) return;
+	if ($hasInstallRules && !$isAllowedType) {
+		return;
+	}
 
 	$hasReplace = !empty($install['replace']);
-	$errorsBefore = $stats['errors'];
+	$errorsBefore = $GLOBALS['stats']['errors'];
 
 	foreach ($sections as $sectionName => $overwrite) {
 		if ($onlySection !== null && $sectionName !== $onlySection) {
@@ -209,7 +216,9 @@ function installPackageResources(
 		}
 
 		$items = $install[$sectionName] ?? null;
-		if (!$items) continue;
+		if (!$items) {
+			continue;
+		}
 
 		foreach ($items as $srcRel => $dstRel) {
 			assertSafeRelativePath((string) $srcRel, 'source');
@@ -220,8 +229,8 @@ function installPackageResources(
 			$source = $packagePath . '/' . $srcRel;
 
 			if (!file_exists($source)) {
-				message($source, "{$red}ERROR source not found:{$reset}");
-				$stats['errors']++;
+				message($source, "{$GLOBALS['red']}ERROR source not found:{$GLOBALS['reset']}");
+				$GLOBALS['stats']['errors']++;
 				continue;
 			}
 
@@ -246,17 +255,19 @@ function installPackageResources(
 		($onlySection === null || $onlySection === 'replace')
 		&& isReplaceOnce($dragoConfig)
 		&& $hasReplace
-		&& $stats['errors'] === $errorsBefore
+		&& $GLOBALS['stats']['errors'] === $errorsBefore
 	) {
-		$installOncePackages[] = $packageName;
+		$GLOBALS['installOncePackages'][] = $packageName;
 	}
 }
+
 
 function isReplaceOnce(array $dragoConfig): bool
 {
 	$installConfig = $dragoConfig['install'] ?? [];
 	return (bool) ($installConfig['replace-once'] ?? false);
 }
+
 
 function getPackageReplacePriority(string $packagePath): int
 {
@@ -271,6 +282,7 @@ function getPackageReplacePriority(string $packagePath): int
 	return (int) ($installConfig['replace-priority'] ?? 100);
 }
 
+
 function writeRootComposer(string $rootComposerPath, array $rootComposer): void
 {
 	$json = json_encode($rootComposer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -280,6 +292,7 @@ function writeRootComposer(string $rootComposerPath, array $rootComposer): void
 
 	file_put_contents($rootComposerPath, $json . "\n");
 }
+
 
 function markInstallOncePackages(string $rootComposerPath, array $rootComposer, array $packageNames): void
 {
@@ -303,6 +316,7 @@ function markInstallOncePackages(string $rootComposerPath, array $rootComposer, 
 		writeRootComposer($rootComposerPath, $rootComposer);
 	}
 }
+
 
 // ----------------------------
 // ROOT CONFIG

@@ -25,6 +25,7 @@ if (!is_array($rootComposer)) {
 	exit(1);
 }
 
+
 function normalizeVendorNames(mixed $vendorNames): array
 {
 	if (is_string($vendorNames) && $vendorNames !== '') {
@@ -49,6 +50,7 @@ function normalizeVendorNames(mixed $vendorNames): array
 	return $normalized !== [] ? array_values(array_unique($normalized)) : DefaultVendorNames;
 }
 
+
 function assertSafeVendorName(string $vendorName): void
 {
 	if (preg_match('~^[a-z0-9][a-z0-9._-]*$~', $vendorName) !== 1) {
@@ -56,17 +58,20 @@ function assertSafeVendorName(string $vendorName): void
 	}
 }
 
+
 function normalizePathForComparison(string $path): string
 {
 	$path = rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path), DIRECTORY_SEPARATOR);
 	return PHP_OS_FAMILY === 'Windows' ? strtolower($path) : $path;
 }
 
+
 function isRedirectedPath(string $path): bool
 {
 	$realPath = realpath($path);
 	return $realPath !== false && normalizePathForComparison($path) !== normalizePathForComparison($realPath);
 }
+
 
 function deleteDir(string $dir): void
 {
@@ -88,6 +93,7 @@ function deleteDir(string $dir): void
 
 	rmdir($dir);
 }
+
 
 $toolsConfig = $rootComposer['extra'][ToolsExtraKey] ?? [];
 if (!is_array($toolsConfig)) {
