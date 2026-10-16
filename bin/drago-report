@@ -1,0 +1,75 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$green = "\033[32m";
+$yellow = "\033[33m";
+$red = "\033[31m";
+$blue = "\033[34m";
+$reset = "\033[0m";
+
+const LogFile = 'drago-install.json';
+
+/**
+ * USAGE:
+ * drago-report                 : overview of the last drago-install run grouped by package
+ * drago-report --package=name  : only entries of packages containing "name"
+ * drago-report --action=copied : only copied|replaced|skipped|error
+ */
+$package = null;
+$action = null;
+foreach (array_slice($argv, 1) as $arg) {
+	if (str_starts_with($arg, '--package=')) {
+		$package = substr($arg, 10);
+	} elseif (str_starts_with($arg, '--action=')) {
+		$action = substr($arg, 9);
+	}
+}
+
+$path = getcwd() . '/' . LogFile;
+if (!is_file($path)) {
+	echo "{$red}ERROR: " . LogFile . " not found. Run drago-install first.{$reset}\n";
+	exit(1);
+}
+
+$data = json_decode((string) file_get_contents($path), true);
+if (!is_array($data) || !is_array($data['entries'] ?? null)) {
+	echo "{$red}ERROR: " . LogFile . " is not valid.{$reset}\n";
+	exit(1);
+}
+
+$colors = ['copied' => $green, 'replaced' => $green, 'skipped' => $yellow, 'error' => $red];
+
+$grouped = [];
+foreach ($data['entries'] as $entry) {
+	if ($package !== null && !str_contains($entry['package'], $package)) {
+		continue;
+	}
+
+	if ($action !== null && $entry['action'] !== $action) {
+		continue;
+	}
+
+	$grouped[$entry['package']][] = $entry;
+}
+
+echo "Last install: {$data['date']}" . (($data['dev'] ?? false) ? " {$blue}(dev){$reset}" : '') . "\n\n";
+
+foreach ($grouped as $name => $entries) {
+	echo "{$blue}{$name}{$reset}\n";
+	foreach ($entries as $entry) {
+		$color = $colors[$entry['action']] ?? '';
+		printf(
+			"  %s%-9s%s %s%s\n",
+			$color,
+			$entry['action'],
+			$reset,
+			$entry['destination'] !== '' ? $entry['destination'] : $entry['source'],
+			$entry['section'] === 'replace' ? ' [replace]' : '',
+		);
+	}
+}
+
+$stats = $data['stats'];
+echo "\n{$green}OK {$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors{$reset}\n";

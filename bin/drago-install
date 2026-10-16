@@ -46,9 +46,49 @@ $destinationRoot = $isDevMode ? $projectRoot . '/resources' : $projectRoot;
 
 $stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
 $installOncePackages = [];
+$log = [];
+$currentPackage = '';
+$currentSection = '';
 const ToolsExtraKey = 'drago-tools';
 const ResourcePackageType = 'drago-tools-resource';
 const DefaultVendorNames = ['drago-ex'];
+const LogFile = 'drago-install.json';
+
+
+function logEntry(string $action, string $source, string $destination): void
+{
+	$GLOBALS['log'][] = [
+		'package' => $GLOBALS['currentPackage'],
+		'section' => $GLOBALS['currentSection'],
+		'action' => $action,
+		'source' => $source,
+		'destination' => $destination,
+	];
+}
+
+
+function relativePath(string $path): string
+{
+	$root = rtrim(str_replace('\\', '/', $GLOBALS['projectRoot']), '/') . '/';
+	$path = str_replace('\\', '/', $path);
+	return str_starts_with($path, $root) ? substr($path, strlen($root)) : $path;
+}
+
+
+function writeInstallLog(string $path, array $log, array $stats, bool $isDevMode): void
+{
+	$data = [
+		'date' => date('c'),
+		'dev' => $isDevMode,
+		'stats' => $stats,
+		'entries' => $log,
+	];
+
+	$json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+	if ($json === false || file_put_contents($path, $json . "\n") === false) {
+		echo "{$GLOBALS['yellow']}WARN Cannot write log: {$path}{$GLOBALS['reset']}\n";
+	}
+}
 
 
 function message(string $msg, string $icon = '', bool $force = false): void
@@ -96,6 +136,7 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 
 	if (!$overwrite && $existsBefore) {
 		message($destination, "{$GLOBALS['yellow']}SKIP exists:{$GLOBALS['reset']}");
+		logEntry('skipped', relativePath($source), relativePath($destination));
 		$GLOBALS['stats']['skipped']++;
 		return;
 	}
@@ -106,6 +147,7 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 	}
 
 	$GLOBALS['stats']['copied']++;
+	logEntry(($overwrite && $existsBefore) ? 'replaced' : 'copied', relativePath($source), relativePath($destination));
 	$icon = ($overwrite && $existsBefore)
 			? "{$GLOBALS['green']}REPLACED:{$GLOBALS['reset']}"
 			: "{$GLOBALS['green']}COPIED:{$GLOBALS['reset']}";
@@ -220,6 +262,9 @@ function installPackageResources(
 			continue;
 		}
 
+		$GLOBALS['currentPackage'] = $packageName;
+		$GLOBALS['currentSection'] = $sectionName;
+
 		foreach ($items as $srcRel => $dstRel) {
 			assertSafeRelativePath((string) $srcRel, 'source');
 			if ($dstRel !== '') {
@@ -231,6 +276,7 @@ function installPackageResources(
 			if (!file_exists($source)) {
 				message($source, "{$GLOBALS['red']}ERROR source not found:{$GLOBALS['reset']}");
 				$GLOBALS['stats']['errors']++;
+				logEntry('error', relativePath($source), '');
 				continue;
 			}
 
@@ -415,4 +461,8 @@ if (!$isDevMode) {
 	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
 }
 
+$logPath = $projectRoot . '/' . LogFile;
+writeInstallLog($logPath, $log, $stats, $isDevMode);
+
 echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors){$reset}\n";
+echo "Log: " . LogFile . " (view with: vendor/bin/drago-report)\n";

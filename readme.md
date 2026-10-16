@@ -16,6 +16,7 @@ Tools for automatic installation and cleanup of project resources from Composer 
 - **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
 - **`drago-clean`**: Cleans up redundant resource folders in configured vendor folders to prevent class duplication or namespace collisions.
 - **`drago-setup`**: Collects and runs setup commands provided by installed Drago packages.
+- **`drago-report`**: Shows what the last `drago-install` run copied, replaced or skipped.
 
 ## Installation
 
@@ -219,7 +220,35 @@ You can also run the commands manually from your terminal:
 vendor/bin/drago-install
 vendor/bin/drago-clean
 vendor/bin/drago-setup
+vendor/bin/drago-report
 ```
+
+### Install Report
+
+`drago-install` writes a log of every processed file to `drago-install.json` in the project root. The file is overwritten on each run.
+
+Each entry contains the package, section (`copy` or `replace`), action, source and destination:
+
+- `copied`: new file created.
+- `replaced`: existing file overwritten (`replace` section).
+- `skipped`: file already exists (`copy` section).
+- `error`: source not found.
+
+Show it with:
+
+```bash
+vendor/bin/drago-report
+vendor/bin/drago-report --package=translator
+vendor/bin/drago-report --action=skipped
+```
+
+```text
+drago-ex/translator
+  copied    app/Core/Translator/Panel.php
+  replaced  app/config/translator.neon [replace]
+```
+
+Add `drago-install.json` to `.gitignore` if you do not want it committed.
 
 ### Cleanup
 
@@ -319,4 +348,5 @@ Database-specific behavior, such as creating the `migrations` table, belongs to 
 7. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
 8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
 9. `drago-clean` targets configured `vendor-names` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
-10. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order.
+10. `drago-install` logs every file action to `drago-install.json`; `drago-report` prints it.
+11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order.
