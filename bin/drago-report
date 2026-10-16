@@ -7,6 +7,7 @@ $green = "\033[32m";
 $yellow = "\033[33m";
 $red = "\033[31m";
 $blue = "\033[34m";
+$magenta = "\033[35m";
 $reset = "\033[0m";
 
 const LogFile = 'drago-install.json';
@@ -66,7 +67,7 @@ foreach ($grouped as $name => $entries) {
 			$entry['action'],
 			$reset,
 			$entry['destination'] !== '' ? $entry['destination'] : $entry['source'],
-			$entry['section'] === 'replace' ? ' [replace]' : '',
+			$entry['section'] === 'replace' ? " {$magenta}[replace]{$reset}" : '',
 		);
 	}
 }
