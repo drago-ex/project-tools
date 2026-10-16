@@ -465,4 +465,4 @@ $logPath = $projectRoot . '/' . LogFile;
 writeInstallLog($logPath, $log, $stats, $isDevMode);
 
 echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors){$reset}\n";
-echo "Log: " . LogFile . " (view with: vendor/bin/drago-report)\n";
+echo 'Log: ' . LogFile . " (view with: vendor/bin/drago-report)\n";
