@@ -30,6 +30,11 @@ foreach (array_slice($argv, 1) as $arg) {
 
 $path = getcwd() . '/' . LogFile;
 if (!is_file($path)) {
+	// drago-install --dev writes its log into .dev-resource/ of the package being developed
+	$path = getcwd() . '/.dev-resource/' . LogFile;
+}
+
+if (!is_file($path)) {
 	echo "{$red}ERROR: " . LogFile . " not found. Run drago-install first.{$reset}\n";
 	exit(1);
 }

@@ -301,7 +301,12 @@ With `symlink: false`, Composer copies packages into `vendor/`, so `drago-clean`
 ### Options
 
 - `--verbose` or `-v`: Show detailed file-by-file progress during installation.
-- `--dev`: Switches the destination directory to `resources/` in the current working directory. Useful for testing installation logic during package development.
+- `--dev`: For developing a resource package. Installs the resources of its dependencies into `.dev-resource/`
+  (instead of the project root), so you can check that they install and that all their classes are available,
+  e.g. for PHPStan and tests. The folder is recreated on every run, files the package has itself in `resources/`
+  are not copied (its own version wins), and the log is written to `.dev-resource/drago-install.json`.
+  Add `/.dev-resource/` to `.gitignore`, `scanDirectories: [.dev-resource]` to `phpstan.neon`, and load classes
+  from `.dev-resource/app` after `resources/app` in `tests/bootstrap.php`.
 
 ## Setup Commands
 
@@ -345,6 +350,10 @@ Commands are sorted in two groups:
 
 Inside each group, commands are sorted by `commands-priority` first and by command label alphabetically second.
 This keeps migrations before application setup while still making the console order predictable.
+
+`sql-export` from `drago-ex/migration` uses the same priority for the order of the exported migrations
+(`db-migration-order.json`), so migrations run in the same order whether they run through `drago-setup` or from
+the project's `migrations/` directory (e.g. in the web installer).
 
 Command values can be plain strings. Object values are also supported for readability.
 Supported object keys are `run`, `command` and `bin`; `run` is the preferred form.

@@ -36,13 +36,16 @@ $projectRoot = getcwd();
 /**
  * PARAMETERS:
  * --verbose / -v : prints detailed information about copying
- * --dev          : switches the destination directory to resources/ for testing during package development
+ * --dev          : installs into .dev-resource/ of the package being developed, to check that the resources
+ *                  of its dependencies install and that all their classes are available (e.g. for PHPStan)
  */
 $verbose = in_array('--verbose', $argv, true) || in_array('-v', $argv, true);
 $isDevMode = in_array('--dev', $argv, true);
 
-// If we are in dev mode, the target is not the project root, but the resources folder in the current package
-$destinationRoot = $isDevMode ? $projectRoot . '/resources' : $projectRoot;
+const DevResourceDir = '.dev-resource';
+
+// In dev mode the resources go to a separate folder, so they never mix with or overwrite the package's own files.
+$destinationRoot = $isDevMode ? $projectRoot . '/' . DevResourceDir : $projectRoot;
 
 $stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
 $installOncePackages = [];
@@ -131,6 +134,14 @@ function assertSafeVendorName(string $vendorName): void
 
 function copyFile(string $source, string $destination, bool $overwrite = false): void
 {
+	// The package's own version of a file wins, as it would in a project that installs the package.
+	if ($GLOBALS['isDevMode'] && isProvidedByPackage($destination)) {
+		message($destination, "{$GLOBALS['yellow']}SKIP provided by this package:{$GLOBALS['reset']}");
+		logEntry('skipped', relativePath($source), relativePath($destination));
+		$GLOBALS['stats']['skipped']++;
+		return;
+	}
+
 	$existsBefore = file_exists($destination);
 	ensureDir(dirname($destination));
 
@@ -152,6 +163,37 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 			? "{$GLOBALS['green']}REPLACED:{$GLOBALS['reset']}"
 			: "{$GLOBALS['green']}COPIED:{$GLOBALS['reset']}";
 	message("$source -> $destination", $icon);
+}
+
+
+function isProvidedByPackage(string $destination): bool
+{
+	$relative = substr($destination, strlen($GLOBALS['destinationRoot']));
+	return is_file($GLOBALS['projectRoot'] . '/resources' . $relative);
+}
+
+
+/** Removes the dev folder from the previous run, so it matches the current dependencies. */
+function clearDevResources(string $dir): void
+{
+	if (basename($dir) !== DevResourceDir || !is_dir($dir) || is_link($dir)) {
+		return;
+	}
+
+	$iterator = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+		RecursiveIteratorIterator::CHILD_FIRST,
+	);
+
+	foreach ($iterator as $item) {
+		if ($item->isDir() && !$item->isLink()) {
+			rmdir($item->getPathname());
+		} else {
+			unlink($item->getPathname());
+		}
+	}
+
+	rmdir($dir);
 }
 
 
@@ -401,6 +443,7 @@ warnMissingVendorNames($projectRoot, $vendorNames);
 $rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
 
 if ($isDevMode) {
+	clearDevResources($destinationRoot);
 	message("Dev mode active: redirecting output to $destinationRoot", "{$blue}DEV:{$reset}", true);
 }
 
@@ -476,7 +519,8 @@ if (!$isDevMode) {
 	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
 }
 
-$logPath = $projectRoot . '/' . LogFile;
+$logPath = ($isDevMode ? $destinationRoot : $projectRoot) . '/' . LogFile;
+ensureDir(dirname($logPath));
 writeInstallLog($logPath, $log, $stats, $isDevMode);
 
 echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors){$reset}\n";
