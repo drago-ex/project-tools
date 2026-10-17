@@ -252,7 +252,7 @@ Add `drago-install.json` to `.gitignore` if you do not want it committed.
 
 ### Cleanup
 
-`drago-clean` removes `resources/` directories from packages in configured vendor folders after their files have been copied or replaced into the project.
+`drago-clean` removes `resources/` directories from packages in configured vendor folders after their files have been copied or replaced into the project. Only packages whose resources are installed are cleaned: packages of type `drago-tools-resource`, and libraries with install rules when `allow-library-install` is enabled. Other libraries keep their `resources/` directory.
 
 This is useful when resource folders contain PHP classes or other files that are mirrored into the project. Leaving the same classes both in `vendor/` and in the project can cause duplicate class or namespace conflicts.
 
@@ -347,6 +347,6 @@ Database-specific behavior, such as creating the `migrations` table, belongs to 
 6. It can skip only `copy` or `replace` sections with `skip-copy` and `skip-replace`.
 7. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
 8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
-9. `drago-clean` targets configured `vendor-names` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
+9. `drago-clean` targets configured `vendor-names` and removes `resources` directories of installed resource packages to keep your vendor clean after files have been mirrored to your project.
 10. `drago-install` logs every file action to `drago-install.json`; `drago-report` prints it.
 11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order.

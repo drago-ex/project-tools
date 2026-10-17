@@ -15,6 +15,11 @@ Use this file as package-specific guidance when working in this repository. Keep
 - `.github/`: CI workflows; keep their PHP versions and commands consistent with Composer and the package scripts.
 - `composer.json`: package metadata, dependency constraints, autoloading, and available Composer scripts.
 
+## Key Parts
+- `bin/drago-install` copies and replaces package resources into the project; `bin/drago-clean` then deletes `resources/` only from packages whose resources are installed (type `drago-tools-resource`, or libraries with install rules when `allow-library-install` is on).
+- `bin/drago-setup` runs package commands from `extra.drago-tools.commands`; `bin/drago-report` shows the last install log (`drago-install.json`).
+- The scripts change files of the consuming project; test them on a copy, never on a real project.
+
 ## Dependencies
 
 Composer constraints describe the package contract. Before changing integration behavior, inspect the source and the actual call sites in this package; do not infer runtime usage solely from dependency declarations.
