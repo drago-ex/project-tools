@@ -125,6 +125,7 @@ function isInstalledResourcePackage(string $packageDir, bool $allowLibraryInstal
 		|| ($type === 'library' && $allowLibraryInstall && $hasInstallRules);
 }
 
+
 foreach ($vendorNames as $vendorName) {
 	$vendorDir = $projectRoot . '/vendor/' . $vendorName;
 
