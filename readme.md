@@ -6,6 +6,27 @@ Tools for automatic installation and cleanup of project resources from Composer 
 [![PHP version](https://badge.fury.io/ph/drago-ex%2Fproject-tools.svg)](https://badge.fury.io/ph/drago-ex%2Fproject-tools)
 [![Coding Style](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml/badge.svg)](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml)
 
+## The Idea Behind Drago Packages
+
+Drago resource packages (`project-auth`, `project-front`, `project-backend` and others) are not libraries you call
+from your code. They are starting points: each package contains only the essential, basic parts of one feature, and
+`drago-install` copies them into your project, where they become your own code.
+
+Every project is different, so the copied files are meant to be adapted to its needs. That is why each package is
+developed separately and kept minimal, and why a later `composer update` does not copy or overwrite files that already
+exist in the project: it must never destroy changes made for that project.
+
+- **`copy`** creates files that do not exist yet and never touches existing ones.
+- **`replace`** with **`replace-once`** lets a preset compose the project once, without overwriting it on later updates.
+- **`replace`** without `replace-once` always overwrites; use it only for files that are not meant to be edited in the project.
+
+When a package releases a fix for files that are already in your project, the update does not apply it for you.
+Compare the package files with your copies and take over the changes you want (`drago-report` shows which files came
+from which package).
+
+`create-netis` builds on this: it creates a complete project from all packages at once. A project with only some
+features can be put together by hand, following the README of each package.
+
 ## Requirements
 
 - PHP >= 8.3

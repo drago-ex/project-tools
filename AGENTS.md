@@ -16,6 +16,7 @@ Use this file as package-specific guidance when working in this repository. Keep
 - `composer.json`: package metadata, dependency constraints, autoloading, and available Composer scripts.
 
 ## Key Parts
+- Design intent: resource packages are minimal starting points; copied files become project code that each project customizes. `composer update` must never overwrite them (`copy` skips existing files, `replace-once` replaces only once). Do not propose moving that code into libraries or overwriting it on update; see "The Idea Behind Drago Packages" in the README.
 - `bin/drago-install` copies and replaces package resources into the project; `bin/drago-clean` then deletes `resources/` only from packages whose resources are installed (type `drago-tools-resource`, or libraries with install rules when `allow-library-install` is on).
 - `bin/drago-setup` runs package commands from `extra.drago-tools.commands`; `bin/drago-report` shows the last install log (`drago-install.json`).
 - The scripts change files of the consuming project; test them on a copy, never on a real project.
