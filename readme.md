@@ -252,7 +252,8 @@ Each entry contains the package, section (`copy` or `replace`), action, source a
 
 - `copied`: new file created.
 - `replaced`: existing file overwritten (`replace` section).
-- `skipped`: file already exists (`copy` section).
+- `skipped`: file already exists (`copy` section), or the package's `resources/` were already installed and
+  removed by `drago-clean`.
 - `error`: source not found.
 
 Show it with:

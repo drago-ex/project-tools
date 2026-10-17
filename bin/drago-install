@@ -273,6 +273,14 @@ function installPackageResources(
 
 			$source = $packagePath . '/' . $srcRel;
 
+			// drago-clean removes resources/ after installation, so on later runs they are already in the project.
+			if (!file_exists($source) && isCleanedResource((string) $srcRel, $packagePath)) {
+				message($source, '[skip] resources already installed and cleaned:');
+				$GLOBALS['stats']['skipped']++;
+				logEntry('skipped', relativePath($source), '');
+				continue;
+			}
+
 			if (!file_exists($source)) {
 				message($source, "{$GLOBALS['red']}ERROR source not found:{$GLOBALS['reset']}");
 				$GLOBALS['stats']['errors']++;
@@ -305,6 +313,13 @@ function installPackageResources(
 	) {
 		$GLOBALS['installOncePackages'][] = $packageName;
 	}
+}
+
+
+function isCleanedResource(string $sourceRelative, string $packagePath): bool
+{
+	$isResource = $sourceRelative === 'resources' || str_starts_with($sourceRelative, 'resources/');
+	return $isResource && !is_dir($packagePath . '/resources');
 }
 
 
