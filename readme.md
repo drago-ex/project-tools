@@ -316,7 +316,6 @@ or any other post-installation task.
 ```json
 "extra": {
     "drago-tools": {
-        "commands-priority": 10,
         "commands": {
             "create:auth-permission": "php vendor/bin/create-auth-permission"
         }
@@ -327,8 +326,8 @@ or any other post-installation task.
 Database migrations need no command of their own. When `drago-ex/migration` is installed, `drago-setup` offers
 the `db:migrate` operation first. It runs `migration db:migrate --packages`, which prints the order and runs the
 migrations of all packages straight from `vendor/` (nothing is copied), followed by the project's own `migrations/`.
-Packages only put their SQL files into `migrations/` and set `commands-priority`. Older package commands that
-migrate straight from `vendor/` are left out, because `db:migrate` already runs their migrations.
+Packages only put their SQL files into `migrations/` and set `migration-priority` (see below). Older package
+commands that migrate straight from `vendor/` are left out, because `db:migrate` already runs their migrations.
 
 Run the setup tool from the project root:
 
@@ -356,8 +355,23 @@ Commands are sorted in two groups:
 Inside each group, commands are sorted by `commands-priority` first and by command label alphabetically second.
 This keeps migrations before application setup while still making the console order predictable.
 
-`drago-ex/migration` uses the same priority for the order of the package migrations, so they run in the same order
-through `drago-setup`, `migration db:migrate --packages` and the web installer of `drago-ex/project-install`.
+### Migration Priority
+
+The order of the package migrations is set separately by `migration-priority` (lower first, default `100`):
+
+```json
+"extra": {
+    "drago-tools": {
+        "migration-priority": 10
+    }
+}
+```
+
+It is read by `drago-ex/migration`, so the migrations run in the same order through the `db:migrate` operation
+of `drago-setup`, `migration db:migrate --packages` and the web installer of `drago-ex/project-install`. A package
+that uses tables of another package needs a higher `migration-priority` than that package. `commands-priority`
+does not affect migrations, except for packages released before `migration-priority` existed, where it is used
+instead.
 
 Command values can be plain strings. Object values are also supported for readability.
 Supported object keys are `run`, `command` and `bin`; `run` is the preferred form.

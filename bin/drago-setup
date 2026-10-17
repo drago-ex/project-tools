@@ -157,7 +157,7 @@ $vendorNames = normalizeVendorNames($rootConfig['vendor-names'] ?? DefaultVendor
 warnMissingVendorNames($projectRoot, $vendorNames);
 
 // With drago-ex/migration, the migrations of all packages run straight from vendor/ in their order
-// (by commands-priority), followed by the project's migrations/, the same way as the web installer runs them.
+// (by migration-priority), followed by the project's migrations/, the same way as the web installer runs them.
 $hasMigrations = is_file($projectRoot . '/vendor/bin/migration');
 if ($hasMigrations) {
 	$availableCommands['db:migrate'] = [
