@@ -156,6 +156,19 @@ if (!is_array($rootConfig)) {
 $vendorNames = normalizeVendorNames($rootConfig['vendor-names'] ?? DefaultVendorNames);
 warnMissingVendorNames($projectRoot, $vendorNames);
 
+// With drago-ex/migration, all package migrations are exported into migrations/ and run from there in one order
+// (db-migration-order.json, by commands-priority), the same way as the web installer runs them.
+$migrateFromProject = is_file($projectRoot . '/vendor/bin/sql-export') && is_file($projectRoot . '/vendor/bin/migration');
+if ($migrateFromProject) {
+	$availableCommands['db:migrate'] = [
+		'run' => 'php vendor/bin/sql-export migrations && php vendor/bin/migration db:migrate migrations',
+		'package' => 'drago-ex/migration',
+		'priority' => 0,
+	];
+}
+
+$replacedCommands = [];
+
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 	if (!isAllowedVendor($packageName, $vendorNames)) {
 		continue;
@@ -194,12 +207,22 @@ foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 			continue;
 		}
 
+		// Older packages migrate straight from vendor/; db:migrate already runs their migrations.
+		if ($migrateFromProject && str_contains($normalized, 'bin/migration db:migrate vendor/')) {
+			$replacedCommands[] = $label;
+			continue;
+		}
+
 		$availableCommands[$label] = [
 			'run' => $normalized,
 			'package' => $packageName,
 			'priority' => $packagePriority,
 		];
 	}
+}
+
+if ($replacedCommands !== []) {
+	echo "{$blue}INFO " . implode(', ', $replacedCommands) . " are run by db:migrate.{$reset}\n";
 }
 
 if ($availableCommands === []) {

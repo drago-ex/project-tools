@@ -310,20 +310,25 @@ With `symlink: false`, Composer copies packages into `vendor/`, so `drago-clean`
 
 ## Setup Commands
 
-Packages can expose setup commands in `extra.drago-tools.commands`.
-These commands can be used for database migrations, generated permission classes or any other post-installation task.
+Packages can expose setup commands in `extra.drago-tools.commands`, for example generated permission classes
+or any other post-installation task.
 
 ```json
 "extra": {
     "drago-tools": {
         "commands-priority": 10,
         "commands": {
-            "db:migrate-auth": "php vendor/bin/migration db:migrate vendor/drago-ex/project-auth/migrations",
             "create:auth-permission": "php vendor/bin/create-auth-permission"
         }
     }
 }
 ```
+
+Database migrations need no command of their own. When `drago-ex/migration` is installed, `drago-setup` offers
+the `db:migrate` operation first: it runs `sql-export`, which copies the migrations of all packages into
+`migrations/` and prints the order they will run in, and then `migration db:migrate migrations`. Packages only put
+their SQL files into `migrations/` and set `commands-priority`. Older package commands that migrate straight from
+`vendor/` are left out, because `db:migrate` already runs their migrations.
 
 Run the setup tool from the project root:
 
@@ -380,4 +385,4 @@ Database-specific behavior, such as creating the `migrations` table, belongs to 
 8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
 9. `drago-clean` targets configured `vendor-names` and removes `resources` directories of installed resource packages to keep your vendor clean after files have been mirrored to your project.
 10. `drago-install` logs every file action to `drago-install.json`; `drago-report` prints it.
-11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order.
+11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order; with `drago-ex/migration` it first offers `db:migrate` (export and run all migrations).
