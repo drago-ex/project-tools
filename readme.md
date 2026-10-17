@@ -325,10 +325,10 @@ or any other post-installation task.
 ```
 
 Database migrations need no command of their own. When `drago-ex/migration` is installed, `drago-setup` offers
-the `db:migrate` operation first: it runs `sql-export`, which copies the migrations of all packages into
-`migrations/` and prints the order they will run in, and then `migration db:migrate migrations`. Packages only put
-their SQL files into `migrations/` and set `commands-priority`. Older package commands that migrate straight from
-`vendor/` are left out, because `db:migrate` already runs their migrations.
+the `db:migrate` operation first. It runs `migration db:migrate --packages`, which prints the order and runs the
+migrations of all packages straight from `vendor/` (nothing is copied), followed by the project's own `migrations/`.
+Packages only put their SQL files into `migrations/` and set `commands-priority`. Older package commands that
+migrate straight from `vendor/` are left out, because `db:migrate` already runs their migrations.
 
 Run the setup tool from the project root:
 
@@ -356,9 +356,8 @@ Commands are sorted in two groups:
 Inside each group, commands are sorted by `commands-priority` first and by command label alphabetically second.
 This keeps migrations before application setup while still making the console order predictable.
 
-`sql-export` from `drago-ex/migration` uses the same priority for the order of the exported migrations
-(`db-migration-order.json`), so migrations run in the same order whether they run through `drago-setup` or from
-the project's `migrations/` directory (e.g. in the web installer).
+`drago-ex/migration` uses the same priority for the order of the package migrations, so they run in the same order
+through `drago-setup`, `migration db:migrate --packages` and the web installer of `drago-ex/project-install`.
 
 Command values can be plain strings. Object values are also supported for readability.
 Supported object keys are `run`, `command` and `bin`; `run` is the preferred form.
@@ -385,4 +384,4 @@ Database-specific behavior, such as creating the `migrations` table, belongs to 
 8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
 9. `drago-clean` targets configured `vendor-names` and removes `resources` directories of installed resource packages to keep your vendor clean after files have been mirrored to your project.
 10. `drago-install` logs every file action to `drago-install.json`; `drago-report` prints it.
-11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order; with `drago-ex/migration` it first offers `db:migrate` (export and run all migrations).
+11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order; with `drago-ex/migration` it first offers `db:migrate` (runs the migrations of all packages in their order).
