@@ -10,7 +10,6 @@
 	"bin": [
 		"bin/drago-install",
 		"bin/drago-clean",
-		"bin/drago-setup",
 		"bin/drago-report"
 	]
 }

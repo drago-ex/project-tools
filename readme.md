@@ -36,8 +36,8 @@ features can be put together by hand, following the README of each package.
 
 - **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
 - **`drago-clean`**: Cleans up redundant resource folders in configured vendor folders to prevent class duplication or namespace collisions.
-- **`drago-setup`**: Collects and runs setup commands provided by installed Drago packages.
-- **`drago-report`**: Shows what the last `drago-install` run copied, replaced or skipped.
+- **`drago-report`**: Shows the reports in `.drago-project/`: what `drago-install` copied, replaced or skipped,
+  and which migrations and permission providers were set up.
 
 ## Installation
 
@@ -86,7 +86,7 @@ Configure trusted Composer vendors in your **root** `composer.json`:
 }
 ```
 
-`vendor-names` limits which packages are scanned by `drago-install`, `drago-clean` and `drago-setup`.
+`vendor-names` limits which packages are scanned by `drago-install` and `drago-clean`.
 Default value is `["drago-ex"]`.
 
 If a configured vendor folder does not exist in `vendor/`, the tools print a warning:
@@ -240,7 +240,6 @@ You can also run the commands manually from your terminal:
 ```bash
 vendor/bin/drago-install
 vendor/bin/drago-clean
-vendor/bin/drago-setup
 vendor/bin/drago-report
 ```
 
@@ -324,52 +323,29 @@ With `symlink: false`, Composer copies packages into `vendor/`, so `drago-clean`
   Add `/.dev-resource/` to `.gitignore`, `scanDirectories: [.dev-resource]` to `phpstan.neon`, and load classes
   from `.dev-resource/app` after `resources/app` in `tests/bootstrap.php`.
 
-## Setup Commands
+## Project Setup
 
-Packages can expose setup commands in `extra.drago-tools.commands`, for example generated permission classes
-or any other post-installation task.
-
-```json
-"extra": {
-    "drago-tools": {
-        "commands": {
-            "create:auth-permission": "php vendor/bin/create-auth-permission"
-        }
-    }
-}
-```
-
-Database migrations need no command of their own. When `drago-ex/migration` is installed, `drago-setup` offers
-the `db:migrate` operation first. It runs `migration db:migrate --packages`, which prints the order and runs the
-migrations of all packages straight from `vendor/` (nothing is copied), followed by the project's own `migrations/`.
-Packages only put their SQL files into `migrations/` and set `migration-priority` (see below). Older package
-commands that migrate straight from `vendor/` are left out, because `db:migrate` already runs their migrations.
-
-Run the setup tool from the project root:
+After the resources are installed, the remaining setup is done by the packages that own it, each with its own
+console. Neither needs this package, so they also work in projects assembled without Project Tools:
 
 ```bash
-vendor/bin/drago-setup
+# migrations of all installed packages in their order, then the project's migrations/ (drago-ex/migration)
+php vendor/bin/migration db:migrate --packages
+
+# permission providers declared by installed packages (drago-ex/permission)
+php vendor/bin/create-permission --packages
 ```
 
-Inside Docker, run it as the web user:
+Inside Docker, run them as the web user:
 
 ```bash
-docker compose exec -u www-data server php vendor/bin/drago-setup
+docker compose exec -u www-data server php vendor/bin/migration db:migrate --packages
+docker compose exec -u www-data server php vendor/bin/create-permission --packages
 ```
 
-### Command Priority
-
-The package-level `commands-priority` value controls the order of setup commands from that package.
-Lower priority runs earlier. Default priority is `100`.
-
-Commands are sorted in two groups:
-
-1. Commands with labels starting with `db:` run first.
-   Use this prefix for database migrations and other database setup tasks.
-2. All other commands run afterwards, for example `create:*`, `generate:*` or `get:*`.
-
-Inside each group, commands are sorted by `commands-priority` first and by command label alphabetically second.
-This keeps migrations before application setup while still making the console order predictable.
+Packages take part by declaration only: SQL files in `migrations/` with `migration-priority` (below), and
+permission rules in a `permission.php` referenced from `extra.drago-permission`. Both commands write their report
+into `.drago-project/`, where `drago-report` shows it.
 
 ### Migration Priority
 
@@ -383,24 +359,10 @@ The order of the package migrations is set separately by `migration-priority` (l
 }
 ```
 
-It is read by `drago-ex/migration`, so the migrations run in the same order through the `db:migrate` operation
-of `drago-setup`, `migration db:migrate --packages` and the web installer of `drago-ex/project-install`. A package
-that uses tables of another package needs a higher `migration-priority` than that package. `commands-priority`
-does not affect migrations, except for packages released before `migration-priority` existed, where it is used
-instead.
-
-Command values can be plain strings. Object values are also supported for readability.
-Supported object keys are `run`, `command` and `bin`; `run` is the preferred form.
-
-### Setup Interaction
-
-- Select specific tasks by number, for example `1,3`.
-- Enter `a` to run all tasks sequentially.
-- Enter `q` to quit.
-
-`drago-setup` does not inspect the database or Nette container.
-It only discovers package commands and executes the selected shell command.
-Database-specific behavior, such as creating the `migrations` table, belongs to the migration command itself.
+It is read by `drago-ex/migration`, so the migrations run in the same order through
+`migration db:migrate --packages` and the web installer of `drago-ex/project-install`. A package that uses tables
+of another package needs a higher `migration-priority` than that package. Packages released before
+`migration-priority` existed set the order by `commands-priority`, which is still used as a fallback.
 
 ## How it works
 
@@ -414,4 +376,3 @@ Database-specific behavior, such as creating the `migrations` table, belongs to 
 8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
 9. `drago-clean` targets configured `vendor-names` and removes `resources` directories of installed resource packages to keep your vendor clean after files have been mirrored to your project.
 10. `drago-install` records every file action in `.drago-project/install.json`; `drago-report` prints it together with the reports of migrations and permissions.
-11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order; with `drago-ex/migration` it first offers `db:migrate` (runs the migrations of all packages in their order).
