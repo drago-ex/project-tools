@@ -95,6 +95,13 @@ function deleteDir(string $dir): void
 }
 
 
+// While a resource package is developed, the resources of its dependencies are not autoloaded, so they cause
+// no duplicate classes; they are the source of drago-install --dev, which recreates .dev-resource/ on every run.
+if (($rootComposer['type'] ?? null) === 'drago-tools-resource') {
+	echo "{$green}OK Nothing to clean: resources of dependencies are kept for drago-install --dev.{$reset}\n";
+	exit(0);
+}
+
 $toolsConfig = $rootComposer['extra'][ToolsExtraKey] ?? [];
 if (!is_array($toolsConfig)) {
 	$toolsConfig = [];

@@ -76,8 +76,8 @@ function loadReport(string $root, string $tool): ?array
 
 $colors = [
 	'copied' => $green, 'replaced' => $green, 'executed' => $green, 'recorded' => $green, 'generated' => $green,
-	'skipped' => $yellow,
-	'error' => $red, 'failed' => $red,
+	'skipped' => $yellow, 'planned' => $blue,
+	'error' => $red, 'failed' => $red, 'conflict' => $red,
 ];
 
 $found = false;
@@ -123,7 +123,9 @@ foreach ($tool !== null ? [$tool] : Tools as $name) {
 				$reset,
 				$target,
 				($entry['section'] ?? null) === 'replace' ? " {$magenta}[replace]{$reset}" : '',
-				isset($entry['message']) ? " {$red}{$entry['message']}{$reset}" : '',
+				isset($entry['message'])
+					? ' ' . (in_array($entry['action'], ['error', 'failed', 'conflict'], true) ? $red : '') . $entry['message'] . $reset
+					: '',
 			);
 		}
 	}

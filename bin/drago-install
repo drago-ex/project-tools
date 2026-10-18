@@ -47,8 +47,10 @@ const DevResourceDir = '.dev-resource';
 // In dev mode the resources go to a separate folder, so they never mix with or overwrite the package's own files.
 $destinationRoot = $isDevMode ? $projectRoot . '/' . DevResourceDir : $projectRoot;
 
-$stats = ['copied' => 0, 'replaced' => 0, 'skipped' => 0, 'error' => 0];
+$stats = ['copied' => 0, 'replaced' => 0, 'skipped' => 0, 'error' => 0]
+	+ ($isDevMode ? ['planned' => 0, 'conflict' => 0] : []);
 $installOncePackages = [];
+$providedByPackage = [];
 $log = [];
 $currentPackage = '';
 $currentSection = '';
@@ -64,7 +66,7 @@ function logEntry(string $action, string $source, string $destination, ?string $
 	$package = $GLOBALS['currentPackage'];
 	$GLOBALS['log'][] = [
 		'package' => $package,
-		'version' => $package !== '' ? InstalledVersions::getPrettyVersion($package) : null,
+		'version' => $package !== '' && InstalledVersions::isInstalled($package) ? InstalledVersions::getPrettyVersion($package) : null,
 		'section' => $GLOBALS['currentSection'],
 		'action' => $action,
 		'source' => $source,
@@ -82,6 +84,15 @@ function relativePath(string $path): string
 }
 
 
+/** Place of an installed file in the project; in dev mode .dev-resource/ stands for the project. */
+function relativeDestination(string $path): string
+{
+	$root = rtrim(str_replace('\\', '/', $GLOBALS['destinationRoot']), '/') . '/';
+	$path = str_replace('\\', '/', $path);
+	return str_starts_with($path, $root) ? substr($path, strlen($root)) : $path;
+}
+
+
 /** Writes the report with the same header as the reports of drago-ex/migration and drago-ex/permission. */
 function writeInstallReport(string $path, array $log, array $stats, bool $isDevMode): void
 {
@@ -89,7 +100,7 @@ function writeInstallReport(string $path, array $log, array $stats, bool $isDevM
 		'tool' => 'install',
 		'command' => 'drago-install' . ($isDevMode ? ' --dev' : ''),
 		'date' => date('c'),
-		'result' => $stats['error'] > 0 ? 'error' : 'ok',
+		'result' => $stats['error'] > 0 || ($stats['conflict'] ?? 0) > 0 ? 'error' : 'ok',
 		'dev' => $isDevMode,
 		'stats' => $stats,
 		'entries' => $log,
@@ -144,8 +155,11 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 {
 	// The package's own version of a file wins, as it would in a project that installs the package.
 	if ($GLOBALS['isDevMode'] && isProvidedByPackage($destination)) {
+		// Remembered for planOwnResources(), which compares the package's own files with its dependencies.
+		$relative = ltrim(str_replace('\\', '/', substr($destination, strlen($GLOBALS['destinationRoot']))), '/');
+		$GLOBALS['providedByPackage'][$relative] = true;
 		message($destination, "{$GLOBALS['yellow']}SKIP provided by this package:{$GLOBALS['reset']}");
-		logEntry('skipped', relativePath($source), relativePath($destination));
+		logEntry('skipped', relativePath($source), relativeDestination($destination), 'Provided by this package.');
 		return;
 	}
 
@@ -154,7 +168,7 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 
 	if (!$overwrite && $existsBefore) {
 		message($destination, "{$GLOBALS['yellow']}SKIP exists:{$GLOBALS['reset']}");
-		logEntry('skipped', relativePath($source), relativePath($destination));
+		logEntry('skipped', relativePath($source), relativeDestination($destination));
 		return;
 	}
 
@@ -162,7 +176,7 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 		throw new RuntimeException("Failed copying $source -> $destination");
 	}
 
-	logEntry(($overwrite && $existsBefore) ? 'replaced' : 'copied', relativePath($source), relativePath($destination));
+	logEntry(($overwrite && $existsBefore) ? 'replaced' : 'copied', relativePath($source), relativeDestination($destination));
 	$icon = ($overwrite && $existsBefore)
 			? "{$GLOBALS['green']}REPLACED:{$GLOBALS['reset']}"
 			: "{$GLOBALS['green']}COPIED:{$GLOBALS['reset']}";
@@ -360,6 +374,74 @@ function installPackageResources(
 }
 
 
+/**
+ * In dev mode, checks the install rules of the package being developed without copying its files: they stay
+ * in resources/, a copy would declare their classes twice. Each file is reported with the place it gets in
+ * a project; a missing source or an unsafe path is an error, and a file that a dependency already installs
+ * and this package does not replace is a conflict.
+ */
+function planOwnResources(string $packageName, array $install): void
+{
+	$GLOBALS['currentPackage'] = $packageName;
+	foreach (['copy', 'replace'] as $sectionName) {
+		$GLOBALS['currentSection'] = $sectionName;
+		foreach ($install[$sectionName] ?? [] as $srcRel => $dstRel) {
+			try {
+				assertSafeRelativePath((string) $srcRel, 'source');
+				if ($dstRel !== '') {
+					assertSafeRelativePath((string) $dstRel, 'destination');
+				}
+			} catch (RuntimeException $e) {
+				message($e->getMessage(), "{$GLOBALS['red']}ERROR:{$GLOBALS['reset']}", true);
+				logEntry('error', (string) $srcRel, (string) $dstRel, $e->getMessage());
+				continue;
+			}
+
+			$source = $GLOBALS['projectRoot'] . '/' . $srcRel;
+			if (!file_exists($source)) {
+				message("$srcRel ($packageName)", "{$GLOBALS['red']}ERROR source not found:{$GLOBALS['reset']}", true);
+				logEntry('error', (string) $srcRel, '', 'Source not found.');
+				continue;
+			}
+
+			$destination = $dstRel === '' ? basename($source) : rtrim((string) $dstRel, '/');
+			if (is_file($source)) {
+				// The same rule as for installation: a destination without an extension is a directory.
+				if (!pathinfo($destination, PATHINFO_EXTENSION)) {
+					$destination .= '/' . basename($source);
+				}
+				planFile($source, $destination, $sectionName === 'replace');
+				continue;
+			}
+
+			$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS));
+			foreach ($iterator as $item) {
+				if ($item->isFile()) {
+					$subPath = str_replace('\\', '/', substr($item->getPathname(), strlen($source) + 1));
+					planFile($item->getPathname(), $destination . '/' . $subPath, $sectionName === 'replace');
+				}
+			}
+		}
+	}
+}
+
+
+/** Reports where a file of the package being developed goes in a project, compared with its dependencies. */
+function planFile(string $source, string $destination, bool $overwrite): void
+{
+	$installedByDependency = is_file($GLOBALS['destinationRoot'] . '/' . $destination)
+		|| isset($GLOBALS['providedByPackage'][$destination]);
+	if ($installedByDependency && !$overwrite) {
+		message("$destination is also installed by a dependency", "{$GLOBALS['red']}CONFLICT:{$GLOBALS['reset']}", true);
+		logEntry('conflict', relativePath($source), $destination, 'A dependency installs the same file; copy keeps the one installed first, use replace to override it.');
+		return;
+	}
+
+	message(relativePath($source) . " -> $destination", "{$GLOBALS['blue']}PLANNED:{$GLOBALS['reset']}");
+	logEntry('planned', relativePath($source), $destination, $installedByDependency ? 'Replaces the file of a dependency.' : null);
+}
+
+
 function isCleanedResource(string $sourceRelative, string $packagePath): bool
 {
 	$isResource = $sourceRelative === 'resources' || str_starts_with($sourceRelative, 'resources/');
@@ -523,6 +605,11 @@ foreach ($packages as $package) {
 }
 if (!$isDevMode) {
 	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
+} else {
+	$ownInstall = $rootComposer['extra'][ToolsExtraKey]['install'] ?? [];
+	if (!empty($ownInstall['copy']) || !empty($ownInstall['replace'])) {
+		planOwnResources($rootPackageName ?? (string) ($rootComposer['name'] ?? 'root'), $ownInstall);
+	}
 }
 
 // In dev mode .dev-resource/ stands for the project, so the report goes to its .drago-project/.
@@ -531,6 +618,10 @@ ensureDir(dirname($reportPath));
 writeInstallReport($reportPath, $log, $stats, $isDevMode);
 
 echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['replaced']} replaced, {$stats['skipped']} skipped, {$stats['error']} errors){$reset}\n";
+if ($isDevMode) {
+	$ownColor = $stats['conflict'] > 0 ? $red : $blue;
+	echo "{$ownColor}INFO Own resources: {$stats['planned']} files checked, {$stats['conflict']} conflicts{$reset}\n";
+}
 echo 'Report: ' . ($isDevMode ? DevResourceDir . '/' : '') . ReportFile . " (view with: vendor/bin/drago-report)\n";
 if (!$isDevMode && is_file($projectRoot . '/' . LegacyLogFile)) {
 	echo "{$blue}INFO " . LegacyLogFile . " is no longer written, you can delete it.{$reset}\n";

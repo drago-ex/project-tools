@@ -323,6 +323,29 @@ With `symlink: false`, Composer copies packages into `vendor/`, so `drago-clean`
   Add `/.dev-resource/` to `.gitignore`, `scanDirectories: [.dev-resource]` to `phpstan.neon`, and load classes
   from `.dev-resource/app` after `resources/app` in `tests/bootstrap.php`.
 
+  The package's own `copy` and `replace` rules are checked as well, without copying its files (they stay in
+  `resources/`, a copy would declare their classes twice). The report lists each own file as `planned` with the place
+  it gets in a project, next to what the dependencies installed, so a wrong path in `composer.json` shows up before
+  the package reaches a project:
+
+  ```text
+  drago-ex/project-auth (v2.6.0)
+    copied    app/Model/User/UserEntity.php
+    skipped   app/Model/User/UserRepository.php Provided by this package.
+  drago-ex/project-account (dev-main)
+    planned   app/Presentation/Account/AccountPresenter.php
+    planned   app/Model/User/UserRepository.php [replace] Replaces the file of a dependency.
+    error     resources/missing Source not found.
+    conflict  app/Presentation/Sign/SignPresenter.php A dependency installs the same file; ...
+  ```
+
+  `error` is a missing source or an unsafe path; `conflict` is an own file in a `copy` section that a dependency
+  installs too, where only the one installed first would be kept (use `replace` to override a dependency's file).
+  Either sets `result` to `error`.
+
+  In a resource package (type `drago-tools-resource`), `drago-clean` deletes nothing: the resources of its
+  dependencies are not autoloaded there and every `drago-install --dev` run copies them again.
+
 ## Project Setup
 
 After the resources are installed, the remaining setup is done by the packages that own it, each with its own
