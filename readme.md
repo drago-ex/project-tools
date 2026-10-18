@@ -246,31 +246,47 @@ vendor/bin/drago-report
 
 ### Install Report
 
-`drago-install` writes a log of every processed file to `drago-install.json` in the project root. The file is overwritten on each run.
+`drago-install` writes a report of every processed file to `.drago-project/install.json` in the project.
+The file is overwritten on each run. `.drago-project/` collects the reports of the tools that set up a project,
+so a programmer or an agent sees in one place what happened:
 
-Each entry contains the package, section (`copy` or `replace`), action, source and destination:
+| Report | Written by |
+|---|---|
+| `install.json` | `drago-install` (this package) |
+| `migration.json` | `migration db:migrate --packages` ([drago-ex/migration](https://github.com/drago-ex/migration)) |
+| `permission.json` | `create-permission --packages` ([drago-ex/permission](https://github.com/drago-ex/permission)) |
+
+All reports share the header `tool`, `command`, `date`, `result` (`ok` or `error`), `stats` and `entries`.
+Each install entry contains the package and its version, section (`copy` or `replace`), action, source and destination:
 
 - `copied`: new file created.
 - `replaced`: existing file overwritten (`replace` section).
 - `skipped`: file already exists (`copy` section), or the package's `resources/` were already installed and
   removed by `drago-clean`.
-- `error`: source not found.
+- `error`: the file could not be installed, with a `message` (e.g. source not found).
 
-Show it with:
+Show the reports with:
 
 ```bash
 vendor/bin/drago-report
+vendor/bin/drago-report --tool=install
 vendor/bin/drago-report --package=translator
 vendor/bin/drago-report --action=skipped
 ```
 
 ```text
-drago-ex/translator
+== install: drago-install, 2026-10-18T14:05:12+02:00 ok
+drago-ex/translator (v4.1.0)
   copied    app/Core/Translator/Panel.php
   replaced  app/config/translator.neon [replace]
+2 copied, 0 replaced, 0 skipped, 0 error
 ```
 
-Add `drago-install.json` to `.gitignore` if you do not want it committed.
+Commit `install.json` and `permission.json`: they record where the project's files came from. Add
+`.drago-project/migration.json` to `.gitignore`, because it depends on the database of each environment.
+
+`drago-install` used to write `drago-install.json` in the project root; it is no longer written and can be deleted.
+`drago-report` still shows it while `.drago-project/install.json` does not exist.
 
 ### Cleanup
 
@@ -304,7 +320,7 @@ With `symlink: false`, Composer copies packages into `vendor/`, so `drago-clean`
 - `--dev`: For developing a resource package. Installs the resources of its dependencies into `.dev-resource/`
   (instead of the project root), so you can check that they install and that all their classes are available,
   e.g. for PHPStan and tests. The folder is recreated on every run, files the package has itself in `resources/`
-  are not copied (its own version wins), and the log is written to `.dev-resource/drago-install.json`.
+  are not copied (its own version wins), and the report is written to `.dev-resource/.drago-project/install.json`.
   Add `/.dev-resource/` to `.gitignore`, `scanDirectories: [.dev-resource]` to `phpstan.neon`, and load classes
   from `.dev-resource/app` after `resources/app` in `tests/bootstrap.php`.
 
@@ -397,5 +413,5 @@ Database-specific behavior, such as creating the `migrations` table, belongs to 
 7. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
 8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
 9. `drago-clean` targets configured `vendor-names` and removes `resources` directories of installed resource packages to keep your vendor clean after files have been mirrored to your project.
-10. `drago-install` logs every file action to `drago-install.json`; `drago-report` prints it.
+10. `drago-install` records every file action in `.drago-project/install.json`; `drago-report` prints it together with the reports of migrations and permissions.
 11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order; with `drago-ex/migration` it first offers `db:migrate` (runs the migrations of all packages in their order).

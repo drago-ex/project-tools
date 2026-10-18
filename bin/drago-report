@@ -10,72 +10,138 @@ $blue = "\033[34m";
 $magenta = "\033[35m";
 $reset = "\033[0m";
 
-const LogFile = 'drago-install.json';
+/** Reports of the tools in the order they usually run when a project is set up. */
+const ReportDir = '.drago-project';
+const Tools = ['install', 'migration', 'permission'];
+const LegacyLogFile = 'drago-install.json';
 
 /**
  * USAGE:
- * drago-report                 : overview of the last drago-install run grouped by package
- * drago-report --package=name  : only entries of packages containing "name"
- * drago-report --action=copied : only copied|replaced|skipped|error
+ * drago-report                   : the last run of drago-install, migrations and permissions, grouped by package
+ * drago-report --tool=migration  : only install|migration|permission
+ * drago-report --package=name    : only entries of packages containing "name"
+ * drago-report --action=skipped  : only entries with this action (e.g. copied, executed, generated, error)
  */
+$tool = null;
 $package = null;
 $action = null;
 foreach (array_slice($argv, 1) as $arg) {
-	if (str_starts_with($arg, '--package=')) {
+	if (str_starts_with($arg, '--tool=')) {
+		$tool = substr($arg, 7);
+	} elseif (str_starts_with($arg, '--package=')) {
 		$package = substr($arg, 10);
 	} elseif (str_starts_with($arg, '--action=')) {
 		$action = substr($arg, 9);
 	}
 }
 
-$path = getcwd() . '/' . LogFile;
-if (!is_file($path)) {
-	// drago-install --dev writes its log into .dev-resource/ of the package being developed
-	$path = getcwd() . '/.dev-resource/' . LogFile;
-}
-
-if (!is_file($path)) {
-	echo "{$red}ERROR: " . LogFile . " not found. Run drago-install first.{$reset}\n";
+if ($tool !== null && !in_array($tool, Tools, true)) {
+	echo "{$red}ERROR: Unknown tool '$tool', use one of: " . implode(', ', Tools) . ".{$reset}\n";
 	exit(1);
 }
 
-$data = json_decode((string) file_get_contents($path), true);
-if (!is_array($data) || !is_array($data['entries'] ?? null)) {
-	echo "{$red}ERROR: " . LogFile . " is not valid.{$reset}\n";
+
+/**
+ * The report of a tool; drago-install --dev writes into .dev-resource/ of the package being developed,
+ * and drago-install before .drago-project/ existed wrote drago-install.json.
+ */
+function loadReport(string $root, string $tool): ?array
+{
+	$paths = [
+		"$root/" . ReportDir . "/$tool.json",
+		"$root/.dev-resource/" . ReportDir . "/$tool.json",
+	];
+	if ($tool === 'install') {
+		$paths[] = "$root/" . LegacyLogFile;
+		$paths[] = "$root/.dev-resource/" . LegacyLogFile;
+	}
+
+	foreach ($paths as $path) {
+		if (!is_file($path)) {
+			continue;
+		}
+
+		$data = json_decode((string) file_get_contents($path), true);
+		if (!is_array($data) || !is_array($data['entries'] ?? null)) {
+			echo "{$GLOBALS['red']}ERROR: $path is not valid.{$GLOBALS['reset']}\n";
+			return null;
+		}
+
+		return $data + ['tool' => $tool, 'command' => basename($path), 'result' => null, 'stats' => []];
+	}
+
+	return null;
+}
+
+
+$colors = [
+	'copied' => $green, 'replaced' => $green, 'executed' => $green, 'recorded' => $green, 'generated' => $green,
+	'skipped' => $yellow,
+	'error' => $red, 'failed' => $red,
+];
+
+$found = false;
+foreach ($tool !== null ? [$tool] : Tools as $name) {
+	$report = loadReport((string) getcwd(), $name);
+	if ($report === null) {
+		continue;
+	}
+
+	$found = true;
+	$result = match ($report['result']) {
+		'ok' => " {$green}ok{$reset}",
+		'error' => " {$red}error{$reset}",
+		default => '',
+	};
+	echo "{$magenta}== {$name}{$reset}: {$report['command']}, {$report['date']}{$result}\n";
+	if (isset($report['message'])) {
+		echo "{$red}{$report['message']}{$reset}\n";
+	}
+
+	$grouped = [];
+	foreach ($report['entries'] as $entry) {
+		if ($package !== null && !str_contains($entry['package'], $package)) {
+			continue;
+		}
+
+		if ($action !== null && $entry['action'] !== $action) {
+			continue;
+		}
+
+		$grouped[$entry['package']][] = $entry;
+	}
+
+	foreach ($grouped as $packageName => $entries) {
+		$version = $entries[0]['version'] ?? null;
+		echo "{$blue}{$packageName}{$reset}" . ($version !== null ? " ($version)" : '') . "\n";
+		foreach ($entries as $entry) {
+			$target = ($entry['destination'] ?? '') !== '' ? $entry['destination'] : ($entry['file'] ?? $entry['source'] ?? '');
+			printf(
+				"  %s%-9s%s %s%s%s\n",
+				$colors[$entry['action']] ?? '',
+				$entry['action'],
+				$reset,
+				$target,
+				($entry['section'] ?? null) === 'replace' ? " {$magenta}[replace]{$reset}" : '',
+				isset($entry['message']) ? " {$red}{$entry['message']}{$reset}" : '',
+			);
+		}
+	}
+
+	$stats = [];
+	foreach ($report['stats'] as $key => $count) {
+		$stats[] = "$count $key";
+	}
+	echo ($stats !== [] ? implode(', ', $stats) : 'no entries') . "\n\n";
+}
+
+if (!$found) {
+	$hint = match ($tool) {
+		'install' => 'Run drago-install first.',
+		'migration' => 'Run migration db:migrate --packages first.',
+		'permission' => 'Run create-permission --packages first.',
+		default => 'Run drago-install, migration db:migrate --packages or create-permission --packages first.',
+	};
+	echo "{$red}ERROR: No report found in " . ReportDir . "/. $hint{$reset}\n";
 	exit(1);
 }
-
-$colors = ['copied' => $green, 'replaced' => $green, 'skipped' => $yellow, 'error' => $red];
-
-$grouped = [];
-foreach ($data['entries'] as $entry) {
-	if ($package !== null && !str_contains($entry['package'], $package)) {
-		continue;
-	}
-
-	if ($action !== null && $entry['action'] !== $action) {
-		continue;
-	}
-
-	$grouped[$entry['package']][] = $entry;
-}
-
-echo "Last install: {$data['date']}" . (($data['dev'] ?? false) ? " {$blue}(dev){$reset}" : '') . "\n\n";
-
-foreach ($grouped as $name => $entries) {
-	echo "{$blue}{$name}{$reset}\n";
-	foreach ($entries as $entry) {
-		$color = $colors[$entry['action']] ?? '';
-		printf(
-			"  %s%-9s%s %s%s\n",
-			$color,
-			$entry['action'],
-			$reset,
-			$entry['destination'] !== '' ? $entry['destination'] : $entry['source'],
-			$entry['section'] === 'replace' ? " {$magenta}[replace]{$reset}" : '',
-		);
-	}
-}
-
-$stats = $data['stats'];
-echo "\n{$green}OK {$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors{$reset}\n";

@@ -47,7 +47,7 @@ const DevResourceDir = '.dev-resource';
 // In dev mode the resources go to a separate folder, so they never mix with or overwrite the package's own files.
 $destinationRoot = $isDevMode ? $projectRoot . '/' . DevResourceDir : $projectRoot;
 
-$stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
+$stats = ['copied' => 0, 'replaced' => 0, 'skipped' => 0, 'error' => 0];
 $installOncePackages = [];
 $log = [];
 $currentPackage = '';
@@ -55,18 +55,22 @@ $currentSection = '';
 const ToolsExtraKey = 'drago-tools';
 const ResourcePackageType = 'drago-tools-resource';
 const DefaultVendorNames = ['drago-ex'];
-const LogFile = 'drago-install.json';
+const ReportFile = '.drago-project/install.json';
+const LegacyLogFile = 'drago-install.json';
 
 
-function logEntry(string $action, string $source, string $destination): void
+function logEntry(string $action, string $source, string $destination, ?string $message = null): void
 {
+	$package = $GLOBALS['currentPackage'];
 	$GLOBALS['log'][] = [
-		'package' => $GLOBALS['currentPackage'],
+		'package' => $package,
+		'version' => $package !== '' ? InstalledVersions::getPrettyVersion($package) : null,
 		'section' => $GLOBALS['currentSection'],
 		'action' => $action,
 		'source' => $source,
 		'destination' => $destination,
-	];
+	] + ($message !== null ? ['message' => $message] : []);
+	$GLOBALS['stats'][$action]++;
 }
 
 
@@ -78,10 +82,14 @@ function relativePath(string $path): string
 }
 
 
-function writeInstallLog(string $path, array $log, array $stats, bool $isDevMode): void
+/** Writes the report with the same header as the reports of drago-ex/migration and drago-ex/permission. */
+function writeInstallReport(string $path, array $log, array $stats, bool $isDevMode): void
 {
 	$data = [
+		'tool' => 'install',
+		'command' => 'drago-install' . ($isDevMode ? ' --dev' : ''),
 		'date' => date('c'),
+		'result' => $stats['error'] > 0 ? 'error' : 'ok',
 		'dev' => $isDevMode,
 		'stats' => $stats,
 		'entries' => $log,
@@ -89,7 +97,7 @@ function writeInstallLog(string $path, array $log, array $stats, bool $isDevMode
 
 	$json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 	if ($json === false || file_put_contents($path, $json . "\n") === false) {
-		echo "{$GLOBALS['yellow']}WARN Cannot write log: {$path}{$GLOBALS['reset']}\n";
+		echo "{$GLOBALS['yellow']}WARN Cannot write report: {$path}{$GLOBALS['reset']}\n";
 	}
 }
 
@@ -138,7 +146,6 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 	if ($GLOBALS['isDevMode'] && isProvidedByPackage($destination)) {
 		message($destination, "{$GLOBALS['yellow']}SKIP provided by this package:{$GLOBALS['reset']}");
 		logEntry('skipped', relativePath($source), relativePath($destination));
-		$GLOBALS['stats']['skipped']++;
 		return;
 	}
 
@@ -148,16 +155,13 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 	if (!$overwrite && $existsBefore) {
 		message($destination, "{$GLOBALS['yellow']}SKIP exists:{$GLOBALS['reset']}");
 		logEntry('skipped', relativePath($source), relativePath($destination));
-		$GLOBALS['stats']['skipped']++;
 		return;
 	}
 
 	if (!copy($source, $destination)) {
-		$GLOBALS['stats']['errors']++;
 		throw new RuntimeException("Failed copying $source -> $destination");
 	}
 
-	$GLOBALS['stats']['copied']++;
 	logEntry(($overwrite && $existsBefore) ? 'replaced' : 'copied', relativePath($source), relativePath($destination));
 	$icon = ($overwrite && $existsBefore)
 			? "{$GLOBALS['green']}REPLACED:{$GLOBALS['reset']}"
@@ -287,7 +291,7 @@ function installPackageResources(
 	}
 
 	$hasReplace = !empty($install['replace']);
-	$errorsBefore = $GLOBALS['stats']['errors'];
+	$errorsBefore = $GLOBALS['stats']['error'];
 
 	foreach ($sections as $sectionName => $overwrite) {
 		if ($onlySection !== null && $sectionName !== $onlySection) {
@@ -318,15 +322,13 @@ function installPackageResources(
 			// drago-clean removes resources/ after installation, so on later runs they are already in the project.
 			if (!file_exists($source) && isCleanedResource((string) $srcRel, $packagePath)) {
 				message($source, '[skip] resources already installed and cleaned:');
-				$GLOBALS['stats']['skipped']++;
 				logEntry('skipped', relativePath($source), '');
 				continue;
 			}
 
 			if (!file_exists($source)) {
 				message($source, "{$GLOBALS['red']}ERROR source not found:{$GLOBALS['reset']}");
-				$GLOBALS['stats']['errors']++;
-				logEntry('error', relativePath($source), '');
+				logEntry('error', relativePath($source), '', 'Source not found.');
 				continue;
 			}
 
@@ -351,7 +353,7 @@ function installPackageResources(
 		($onlySection === null || $onlySection === 'replace')
 		&& isReplaceOnce($dragoConfig)
 		&& $hasReplace
-		&& $GLOBALS['stats']['errors'] === $errorsBefore
+		&& $GLOBALS['stats']['error'] === $errorsBefore
 	) {
 		$GLOBALS['installOncePackages'][] = $packageName;
 	}
@@ -493,6 +495,8 @@ foreach ($packages as $package) {
 
 	} catch (Throwable $e) {
 		message("Error in {$package['name']}: " . $e->getMessage(), "{$red}ERROR:{$reset}", true);
+		[$currentPackage, $currentSection] = [$package['name'], 'copy'];
+		logEntry('error', '', '', $e->getMessage());
 		continue;
 	}
 }
@@ -512,6 +516,8 @@ foreach ($packages as $package) {
 
 	} catch (Throwable $e) {
 		message("Error in {$package['name']}: " . $e->getMessage(), "{$red}ERROR:{$reset}", true);
+		[$currentPackage, $currentSection] = [$package['name'], 'replace'];
+		logEntry('error', '', '', $e->getMessage());
 		continue;
 	}
 }
@@ -519,9 +525,13 @@ if (!$isDevMode) {
 	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
 }
 
-$logPath = ($isDevMode ? $destinationRoot : $projectRoot) . '/' . LogFile;
-ensureDir(dirname($logPath));
-writeInstallLog($logPath, $log, $stats, $isDevMode);
+// In dev mode .dev-resource/ stands for the project, so the report goes to its .drago-project/.
+$reportPath = $destinationRoot . '/' . ReportFile;
+ensureDir(dirname($reportPath));
+writeInstallReport($reportPath, $log, $stats, $isDevMode);
 
-echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors){$reset}\n";
-echo 'Log: ' . LogFile . " (view with: vendor/bin/drago-report)\n";
+echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['replaced']} replaced, {$stats['skipped']} skipped, {$stats['error']} errors){$reset}\n";
+echo 'Report: ' . ($isDevMode ? DevResourceDir . '/' : '') . ReportFile . " (view with: vendor/bin/drago-report)\n";
+if (!$isDevMode && is_file($projectRoot . '/' . LegacyLogFile)) {
+	echo "{$blue}INFO " . LegacyLogFile . " is no longer written, you can delete it.{$reset}\n";
+}
