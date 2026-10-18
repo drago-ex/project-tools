@@ -1,0 +1,246 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Composer\InstalledVersions;
+
+$green = "\033[32m";
+$yellow = "\033[33m";
+$red = "\033[31m";
+$blue = "\033[34m";
+$reset = "\033[0m";
+
+const InstalledFile = '.drago-project/installed.json';
+
+/**
+ * USAGE:
+ * drago-diff                    : project files whose package changed them since they were installed
+ * drago-diff <file>             : what the package changed in the file (installed version -> current version)
+ * drago-diff <file> --project   : the project file compared with the current package file
+ * drago-diff --accept <file>    : the changes are taken over; the file is compared with the current version from now on
+ * drago-diff --accept --all     : the same for all files changed by their packages
+ *
+ * Nothing in the project is overwritten. The package versions are fetched by `composer archive` into a temporary
+ * directory, so it works also after drago-clean removed the resources from vendor/.
+ */
+$arguments = array_slice($argv, 1);
+$accept = in_array('--accept', $arguments, true);
+$all = in_array('--all', $arguments, true);
+$compareProject = in_array('--project', $arguments, true);
+$file = current(array_filter($arguments, fn(string $arg): bool => !str_starts_with($arg, '--'))) ?: null;
+$file = $file !== null ? str_replace('\\', '/', $file) : null;
+
+$projectRoot = (string) getcwd();
+if (!is_file($projectRoot . '/vendor/autoload.php')) {
+	echo "{$red}ERROR: vendor/autoload.php not found. Run composer install first.{$reset}\n";
+	exit(1);
+}
+
+require $projectRoot . '/vendor/autoload.php';
+
+$installedPath = $projectRoot . '/' . InstalledFile;
+$data = is_file($installedPath) ? json_decode((string) file_get_contents($installedPath), true) : null;
+$installed = is_array($data['files'] ?? null) ? $data['files'] : null;
+if ($installed === null) {
+	echo "{$red}ERROR: " . InstalledFile . " not found. It is written by drago-install (drago-ex/project-tools 2.1+).{$reset}\n";
+	exit(1);
+}
+
+
+function fileHash(string $file): string
+{
+	return sha1(str_replace("\r\n", "\n", (string) file_get_contents($file)));
+}
+
+
+function currentVersion(string $package): ?string
+{
+	return InstalledVersions::isInstalled($package) ? InstalledVersions::getPrettyVersion($package) : null;
+}
+
+
+/** Directory with the package files of a version: vendor/ when it is the installed one and complete, otherwise an archive. */
+function packageFiles(string $package, string $version, string $source): ?string
+{
+	if ($version === currentVersion($package)) {
+		$path = InstalledVersions::getInstallPath($package);
+		if ($path !== null && is_file("$path/$source")) {
+			return $path;
+		}
+	}
+
+	static $cache = [];
+	if (array_key_exists("$package@$version", $cache)) {
+		return $cache["$package@$version"];
+	}
+
+	$dir = sys_get_temp_dir() . '/drago-diff/' . str_replace('/', '-', $package) . '-' . preg_replace('~[^\w.-]~', '_', $version);
+	if (!is_dir($dir)) {
+		@mkdir($dir, 0o777, true);
+		// Run outside the project: inside it, Composer does not find resource packages of other versions.
+		$command = sprintf(
+			'composer archive %s %s --format=tar --dir=. --file=package --no-interaction',
+			escapeshellarg($package),
+			escapeshellarg($version),
+		);
+		$process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $dir);
+		$output = is_resource($process) ? stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]) : '';
+		$code = is_resource($process) ? proc_close($process) : 1;
+		try {
+			if ($code !== 0 || !is_file("$dir/package.tar")) {
+				throw new RuntimeException((string) $output);
+			}
+			(new PharData("$dir/package.tar"))->extractTo("$dir/files", null, true);
+		} catch (Throwable $e) {
+			echo "{$GLOBALS['yellow']}WARN Cannot fetch $package $version: " . trim($e->getMessage()) . "{$GLOBALS['reset']}\n";
+			return $cache["$package@$version"] = null;
+		}
+	}
+
+	return $cache["$package@$version"] = is_dir("$dir/files") ? "$dir/files" : null;
+}
+
+
+/**
+ * @param array{package: string, version: ?string, source: string, hash: string} $record
+ * @return array{upstream: string, local: string, current: ?string}
+ */
+function fileStatus(string $projectRoot, string $path, array $record): array
+{
+	$local = !is_file("$projectRoot/$path") ? 'deleted' : (fileHash("$projectRoot/$path") === $record['hash'] ? 'unchanged' : 'modified');
+	$current = currentVersion($record['package']);
+	if ($current === null) {
+		return ['upstream' => 'package removed', 'local' => $local, 'current' => null];
+	}
+	if ($current === $record['version']) {
+		return ['upstream' => 'unchanged', 'local' => $local, 'current' => $current];
+	}
+
+	$dir = packageFiles($record['package'], $current, $record['source']);
+	if ($dir === null) {
+		return ['upstream' => 'unknown', 'local' => $local, 'current' => $current];
+	}
+
+	$upstream = !is_file("$dir/{$record['source']}") ? 'removed' : (fileHash("$dir/{$record['source']}") === $record['hash'] ? 'unchanged' : 'changed');
+	return ['upstream' => $upstream, 'local' => $local, 'current' => $current];
+}
+
+
+function showDiff(string $old, string $new, string $oldLabel, string $newLabel): void
+{
+	$command = sprintf(
+		'git -c core.autocrlf=false -c core.safecrlf=false diff --no-index --no-color --ignore-cr-at-eol %s %s',
+		escapeshellarg($old),
+		escapeshellarg($new),
+	);
+	exec($command, $output);
+	if ($output === []) {
+		echo "No differences.\n";
+		return;
+	}
+
+	// git shows the temporary paths; the labels say what is compared.
+	echo "--- $oldLabel\n+++ $newLabel\n";
+	foreach ($output as $line) {
+		if (!preg_match('~^(diff --git|index |--- |\+\+\+ )~', $line)) {
+			echo $line, "\n";
+		}
+	}
+}
+
+
+// One file: show the change.
+if ($file !== null && !$accept) {
+	$record = $installed[$file] ?? null;
+	if ($record === null) {
+		echo "{$red}ERROR: $file is not recorded in " . InstalledFile . ".{$reset}\n";
+		exit(1);
+	}
+
+	$current = currentVersion($record['package']) ?? $record['version'];
+	$new = packageFiles($record['package'], $current, $record['source']);
+	if ($new === null || !is_file("$new/{$record['source']}")) {
+		echo "{$red}ERROR: {$record['source']} is not in {$record['package']} $current.{$reset}\n";
+		exit(1);
+	}
+
+	if ($compareProject) {
+		showDiff("$projectRoot/$file", "$new/{$record['source']}", "$file (project)", "{$record['package']} $current");
+		exit(0);
+	}
+
+	$old = packageFiles($record['package'], (string) $record['version'], $record['source']);
+	if ($old === null || !is_file("$old/{$record['source']}")) {
+		echo "{$red}ERROR: Cannot fetch {$record['package']} {$record['version']}.{$reset}\n";
+		exit(1);
+	}
+
+	showDiff("$old/{$record['source']}", "$new/{$record['source']}", "{$record['package']} {$record['version']}", "{$record['package']} $current");
+	exit(0);
+}
+
+
+// Status of all files, or accepting the changes.
+$changed = [];
+foreach ($installed as $path => $record) {
+	if ($accept && !$all && $path !== $file) {
+		continue;
+	}
+
+	$status = fileStatus($projectRoot, $path, $record);
+	if ($status['upstream'] !== 'unchanged') {
+		$changed[$path] = $status + ['record' => $record];
+	}
+}
+
+if ($accept) {
+	if (!$all && $file === null) {
+		echo "{$red}ERROR: Pass a file or --all to --accept.{$reset}\n";
+		exit(1);
+	}
+
+	foreach ($changed as $path => $status) {
+		$record = $status['record'];
+		$dir = $status['current'] !== null ? packageFiles($record['package'], $status['current'], $record['source']) : null;
+		if ($dir === null || !is_file("$dir/{$record['source']}")) {
+			unset($installed[$path]);
+			echo "{$yellow}REMOVED from the record: $path{$reset}\n";
+			continue;
+		}
+
+		$installed[$path] = ['version' => $status['current'], 'hash' => fileHash("$dir/{$record['source']}")] + $record;
+		echo "{$green}ACCEPTED: $path ({$record['package']} {$status['current']}){$reset}\n";
+	}
+
+	ksort($installed);
+	file_put_contents($installedPath, json_encode(['files' => $installed], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+	if ($changed === []) {
+		echo "Nothing to accept.\n";
+	}
+	exit(0);
+}
+
+$colors = ['changed' => $yellow, 'removed' => $red, 'package removed' => $red, 'unknown' => $red];
+$grouped = [];
+foreach ($changed as $path => $status) {
+	$grouped[$status['record']['package']][$path] = $status;
+}
+
+foreach ($grouped as $package => $files) {
+	$first = current($files);
+	echo "{$blue}$package{$reset} {$first['record']['version']} -> " . ($first['current'] ?? '(removed)') . "\n";
+	foreach ($files as $path => $status) {
+		$hint = match (true) {
+			$status['upstream'] === 'changed' && $status['local'] === 'unchanged' => 'not edited in the project, the new version can be taken as it is',
+			$status['upstream'] === 'changed' => 'edited in the project, merge by hand',
+			default => '',
+		};
+		printf("  %s%-15s%s %s%s\n", $colors[$status['upstream']] ?? '', $status['upstream'], $reset, $path, $hint !== '' ? "  ($hint)" : '');
+	}
+}
+
+$count = count($installed);
+echo $changed === []
+	? "{$green}OK All $count recorded files are up to date with their packages.{$reset}\n"
+	: "\n" . count($changed) . " of $count recorded files changed in their packages. Show a change: drago-diff <file>; when taken over: drago-diff --accept <file>\n";

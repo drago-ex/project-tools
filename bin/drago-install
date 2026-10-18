@@ -53,12 +53,69 @@ $installOncePackages = [];
 $providedByPackage = [];
 $log = [];
 $currentPackage = '';
+$currentPackagePath = '';
 $currentSection = '';
 const ToolsExtraKey = 'drago-tools';
 const ResourcePackageType = 'drago-tools-resource';
 const DefaultVendorNames = ['drago-ex'];
 const ReportFile = '.drago-project/install.json';
+const InstalledFile = '.drago-project/installed.json';
 const LegacyLogFile = 'drago-install.json';
+
+// Which package version installed each project file, kept across runs (unlike the report) for drago-diff.
+$installed = loadInstalled($projectRoot . '/' . InstalledFile);
+
+
+/** @return array<string, array{package: string, version: ?string, source: string, hash: string}> */
+function loadInstalled(string $path): array
+{
+	$data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+	return is_array($data['files'] ?? null) ? $data['files'] : [];
+}
+
+
+/** Content hash regardless of line endings, which Git may change on checkout. */
+function fileHash(string $file): string
+{
+	return sha1(str_replace("\r\n", "\n", (string) file_get_contents($file)));
+}
+
+
+/**
+ * Records which package version installed a file and with what content. A file that existed before the record
+ * did is adopted only when it equals the package file, so its base is known; a modified one stays unrecorded.
+ */
+function trackFile(string $source, string $destination, bool $adopt = false): void
+{
+	if ($GLOBALS['isDevMode']) {
+		return;
+	}
+
+	$key = relativeDestination($destination);
+	if ($adopt && (isset($GLOBALS['installed'][$key]) || fileHash($source) !== fileHash($destination))) {
+		return;
+	}
+
+	$package = $GLOBALS['currentPackage'];
+	$packagePath = rtrim($GLOBALS['currentPackagePath'], '/') . '/';
+	$source = normalizePath($source);
+	$GLOBALS['installed'][$key] = [
+		'package' => $package,
+		'version' => InstalledVersions::isInstalled($package) ? InstalledVersions::getPrettyVersion($package) : null,
+		'source' => str_starts_with($source, $packagePath) ? substr($source, strlen($packagePath)) : $source,
+		'hash' => fileHash($destination),
+	];
+}
+
+
+function writeInstalled(string $path, array $installed): void
+{
+	ksort($installed);
+	$json = json_encode(['files' => $installed], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+	if ($json === false || file_put_contents($path, $json . "\n") === false) {
+		echo "{$GLOBALS['yellow']}WARN Cannot write: {$path}{$GLOBALS['reset']}\n";
+	}
+}
 
 
 function logEntry(string $action, string $source, string $destination, ?string $message = null): void
@@ -187,12 +244,15 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 	if (!$overwrite && $existsBefore) {
 		message($destination, "{$GLOBALS['yellow']}SKIP exists:{$GLOBALS['reset']}");
 		logEntry('skipped', relativePath($source), relativeDestination($destination));
+		trackFile($source, $destination, adopt: true);
 		return;
 	}
 
 	if (!copy($source, $destination)) {
 		throw new RuntimeException("Failed copying $source -> $destination");
 	}
+
+	trackFile($source, $destination);
 
 	logEntry(($overwrite && $existsBefore) ? 'replaced' : 'copied', relativePath($source), relativeDestination($destination));
 	$icon = ($overwrite && $existsBefore)
@@ -341,6 +401,7 @@ function installPackageResources(
 		}
 
 		$GLOBALS['currentPackage'] = $packageName;
+		$GLOBALS['currentPackagePath'] = $packagePath;
 		$GLOBALS['currentSection'] = $sectionName;
 
 		foreach ($items as $srcRel => $dstRel) {
@@ -637,6 +698,9 @@ if (!$isDevMode) {
 $reportPath = $destinationRoot . '/' . ReportFile;
 ensureDir(dirname($reportPath));
 writeInstallReport($reportPath, $log, $stats, $isDevMode);
+if (!$isDevMode) {
+	writeInstalled($projectRoot . '/' . InstalledFile, $installed);
+}
 
 echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['replaced']} replaced, {$stats['skipped']} skipped, {$stats['error']} errors){$reset}\n";
 if ($isDevMode) {

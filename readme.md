@@ -11,7 +11,7 @@ Tools for automatic installation and cleanup of project resources from Composer 
 Drago resource packages (`project-auth`, `project-front`, `project-backend` and others) are not libraries you call
 from your code. Each contains only the basic parts of one feature, and `drago-install` copies them into your project,
 where they become your own code to adapt. A later `composer update` never overwrites files that already exist in the
-project, so a fix released in a package has to be taken over by hand.
+project, so a fix released in a package has to be taken over by hand; `drago-diff` shows which files it concerns.
 
 ## Requirements
 
@@ -24,6 +24,7 @@ project, so a fix released in a package has to be taken over by hand.
 - **`drago-clean`**: Cleans up redundant resource folders in configured vendor folders to prevent class duplication or namespace collisions.
 - **`drago-report`**: Shows the reports in `.drago-project/`: what `drago-install` copied, replaced or skipped,
   and which migrations and permission providers were set up.
+- **`drago-diff`**: Shows the project files whose package changed them since they were installed.
 
 ## Installation
 
@@ -227,6 +228,7 @@ You can also run the commands manually from your terminal:
 vendor/bin/drago-install
 vendor/bin/drago-clean
 vendor/bin/drago-report
+vendor/bin/drago-diff
 ```
 
 ### Options
@@ -248,6 +250,20 @@ vendor/bin/drago-report --action=skipped
 ```
 
 Commit `.drago-project/`, except `migration.json`, which differs per database.
+
+### Package Updates
+
+`drago-install` records in `.drago-project/installed.json` which package version installed each file. After
+`composer update`, `drago-diff` lists the files whose package changed them, and whether you edited them:
+
+```bash
+vendor/bin/drago-diff                          # files changed in their packages
+vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php            # what the package changed
+vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php --project  # your file against the new version
+vendor/bin/drago-diff --accept app/Presentation/Sign/SignPresenter.php   # after taking the changes over
+```
+
+Nothing is overwritten; take the changes over by hand. The package versions are fetched by `composer archive`.
 
 ### Cleanup
 
