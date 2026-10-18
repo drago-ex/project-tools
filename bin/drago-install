@@ -84,6 +84,24 @@ function relativePath(string $path): string
 }
 
 
+/** Removes `.` and `..` segments without resolving symlinks, which may point outside the project. */
+function normalizePath(string $path): string
+{
+	$path = str_replace('\\', '/', $path);
+	$prefix = preg_match('~^(?:[A-Za-z]:)?/~', $path, $m) === 1 ? $m[0] : '';
+	$segments = [];
+	foreach (explode('/', substr($path, strlen($prefix))) as $segment) {
+		if ($segment === '..' && $segments !== [] && end($segments) !== '..') {
+			array_pop($segments);
+		} elseif ($segment !== '.' && $segment !== '') {
+			$segments[] = $segment;
+		}
+	}
+
+	return $prefix . implode('/', $segments);
+}
+
+
 /** Place of an installed file in the project; in dev mode .dev-resource/ stands for the project. */
 function relativeDestination(string $path): string
 {
@@ -556,6 +574,9 @@ foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 	if (!$packagePath) {
 		continue;
 	}
+
+	// Composer reports e.g. vendor/composer/../drago-ex/x; the report shows vendor/drago-ex/x.
+	$packagePath = normalizePath($packagePath);
 
 	$packages[] = [
 		'name' => $packageName,
