@@ -263,6 +263,7 @@ vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php --project  # your 
 vendor/bin/drago-diff --accept app/Presentation/Sign/SignPresenter.php   # after taking the changes over
 ```
 
+It also lists new files of `replace-once` packages, which `drago-install` no longer copies after the first install.
 Nothing is overwritten; take the changes over by hand. The package versions are fetched by `composer archive`.
 
 ### Cleanup

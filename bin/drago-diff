@@ -65,7 +65,7 @@ function packageFiles(string $package, string $version, string $source): ?string
 {
 	if ($version === currentVersion($package)) {
 		$path = InstalledVersions::getInstallPath($package);
-		if ($path !== null && is_file("$path/$source")) {
+		if ($path !== null && file_exists("$path/$source")) {
 			return $path;
 		}
 	}
@@ -124,6 +124,63 @@ function fileStatus(string $projectRoot, string $path, array $record): array
 
 	$upstream = !is_file("$dir/{$record['source']}") ? 'removed' : (fileHash("$dir/{$record['source']}") === $record['hash'] ? 'unchanged' : 'changed');
 	return ['upstream' => $upstream, 'local' => $local, 'current' => $current];
+}
+
+
+/**
+ * Files that a replace-once package added after it was installed: from then on its replace section is skipped
+ * (skip-replace in the root composer.json), so drago-install does not copy them. Sections skipped on purpose
+ * (skip, or skip-replace of a package without replace-once) are not reported; copy installs new files itself.
+ * @return list<array{package: string, version: string, source: string, destination: string}>
+ */
+function newReplaceOnceFiles(string $projectRoot, array $installed): array
+{
+	$root = json_decode((string) @file_get_contents("$projectRoot/composer.json"), true);
+	$found = [];
+	foreach ($root['extra']['drago-tools']['packages'] ?? [] as $package => $options) {
+		$version = currentVersion((string) $package);
+		if (($options['skip-replace'] ?? false) !== true || ($options['skip'] ?? false) === true || $version === null) {
+			continue;
+		}
+
+		$composer = json_decode((string) @file_get_contents(InstalledVersions::getInstallPath($package) . '/composer.json'), true);
+		$install = $composer['extra']['drago-tools']['install'] ?? [];
+		if (($install['replace-once'] ?? false) !== true) {
+			continue;
+		}
+
+		foreach ($install['replace'] ?? [] as $sourceRule => $destinationRule) {
+			$sourceRule = trim((string) $sourceRule, '/');
+			$dir = packageFiles($package, $version, $sourceRule);
+			if ($dir === null || !file_exists("$dir/$sourceRule")) {
+				continue;
+			}
+
+			// The same mapping as drago-install: a directory keeps its tree, a file goes into a destination without an extension.
+			$files = [];
+			if (is_file("$dir/$sourceRule")) {
+				$destination = $destinationRule === '' ? basename($sourceRule) : rtrim((string) $destinationRule, '/');
+				$files[$sourceRule] = pathinfo($destination, PATHINFO_EXTENSION) ? $destination : $destination . '/' . basename($sourceRule);
+			} else {
+				$base = $destinationRule === '' ? basename($sourceRule) : rtrim((string) $destinationRule, '/');
+				$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator("$dir/$sourceRule", FilesystemIterator::SKIP_DOTS));
+				foreach ($iterator as $item) {
+					if ($item->isFile()) {
+						$sub = str_replace('\\', '/', substr($item->getPathname(), strlen("$dir/$sourceRule") + 1));
+						$files["$sourceRule/$sub"] = "$base/$sub";
+					}
+				}
+			}
+
+			foreach ($files as $source => $destination) {
+				if (!isset($installed[$destination]) && !file_exists("$projectRoot/$destination")) {
+					$found[] = ['package' => $package, 'version' => $version, 'source' => $source, 'destination' => $destination];
+				}
+			}
+		}
+	}
+
+	return $found;
 }
 
 
@@ -240,7 +297,18 @@ foreach ($grouped as $package => $files) {
 	}
 }
 
+$newFiles = newReplaceOnceFiles($projectRoot, $installed);
+if ($newFiles !== []) {
+	echo ($changed !== [] ? "\n" : '') . "New files of replace-once packages, not installed (copy them by hand if you want them):\n";
+	foreach ($newFiles as $new) {
+		printf("  %snew%s             %s  (%s %s: %s)\n", $yellow, $reset, $new['destination'], $new['package'], $new['version'], $new['source']);
+	}
+}
+
 $count = count($installed);
-echo $changed === []
-	? "{$green}OK All $count recorded files are up to date with their packages.{$reset}\n"
-	: "\n" . count($changed) . " of $count recorded files changed in their packages. Show a change: drago-diff <file>; when taken over: drago-diff --accept <file>\n";
+if ($changed === [] && $newFiles === []) {
+	echo "{$green}OK All $count recorded files are up to date with their packages.{$reset}\n";
+} else {
+	echo "\n" . count($changed) . " of $count recorded files changed in their packages, " . count($newFiles) . " new files not installed.\n"
+		. ($changed !== [] ? "Show a change: drago-diff <file>; when taken over: drago-diff --accept <file>\n" : '');
+}
