@@ -95,12 +95,43 @@ function deleteDir(string $dir): void
 }
 
 
+// While a resource package is developed, the resources of its dependencies are not autoloaded, so they cause
+// no duplicate classes; they are the source of drago-install --dev, which recreates .dev-resource/ on every run.
+if (($rootComposer['type'] ?? null) === 'drago-tools-resource') {
+	echo "{$green}OK Nothing to clean: resources of dependencies are kept for drago-install --dev.{$reset}\n";
+	exit(0);
+}
+
 $toolsConfig = $rootComposer['extra'][ToolsExtraKey] ?? [];
 if (!is_array($toolsConfig)) {
 	$toolsConfig = [];
 }
 
 $vendorNames = normalizeVendorNames($toolsConfig['vendor-names'] ?? DefaultVendorNames);
+$allowLibraryInstall = ($toolsConfig['allow-library-install'] ?? false) === true;
+
+
+/**
+ * Same rule as drago-install: only packages whose resources are copied into the project are cleaned,
+ * so a library that needs its resources directory at runtime keeps it.
+ */
+function isInstalledResourcePackage(string $packageDir, bool $allowLibraryInstall): bool
+{
+	$composer = is_file($packageDir . '/composer.json')
+		? json_decode((string) file_get_contents($packageDir . '/composer.json'), true)
+		: null;
+	if (!is_array($composer)) {
+		return false;
+	}
+
+	$type = $composer['type'] ?? 'library';
+	$install = $composer['extra'][ToolsExtraKey]['install'] ?? [];
+	$hasInstallRules = !empty($install['copy']) || !empty($install['replace']);
+
+	return $type === 'drago-tools-resource'
+		|| ($type === 'library' && $allowLibraryInstall && $hasInstallRules);
+}
+
 
 foreach ($vendorNames as $vendorName) {
 	$vendorDir = $projectRoot . '/vendor/' . $vendorName;
@@ -116,7 +147,7 @@ foreach ($vendorNames as $vendorName) {
 		}
 
 		$resourceDir = $packageDir . '/resources';
-		if (is_dir($resourceDir)) {
+		if (is_dir($resourceDir) && isInstalledResourcePackage($packageDir, $allowLibraryInstall)) {
 			if (isRedirectedPath($resourceDir)) {
 				continue;
 			}

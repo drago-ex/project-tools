@@ -6,6 +6,13 @@ Tools for automatic installation and cleanup of project resources from Composer 
 [![PHP version](https://badge.fury.io/ph/drago-ex%2Fproject-tools.svg)](https://badge.fury.io/ph/drago-ex%2Fproject-tools)
 [![Coding Style](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml/badge.svg)](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml)
 
+## The Idea Behind Drago Packages
+
+Drago resource packages (`project-auth`, `project-front`, `project-backend` and others) are not libraries you call
+from your code. Each contains only the basic parts of one feature, and `drago-install` copies them into your project,
+where they become your own code to adapt. A later `composer update` never overwrites files that already exist in the
+project, so a fix released in a package has to be taken over by hand; `drago-diff` shows which files it concerns.
+
 ## Requirements
 
 - PHP >= 8.3
@@ -15,8 +22,9 @@ Tools for automatic installation and cleanup of project resources from Composer 
 
 - **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
 - **`drago-clean`**: Cleans up redundant resource folders in configured vendor folders to prevent class duplication or namespace collisions.
-- **`drago-setup`**: Collects and runs setup commands provided by installed Drago packages.
-- **`drago-report`**: Shows what the last `drago-install` run copied, replaced or skipped.
+- **`drago-report`**: Shows the reports in `.drago-project/`: what `drago-install` copied, replaced or skipped,
+  and which migrations and permission providers were set up.
+- **`drago-diff`**: Shows the project files whose package changed them since they were installed.
 
 ## Installation
 
@@ -65,7 +73,7 @@ Configure trusted Composer vendors in your **root** `composer.json`:
 }
 ```
 
-`vendor-names` limits which packages are scanned by `drago-install`, `drago-clean` and `drago-setup`.
+`vendor-names` limits which packages are scanned by `drago-install` and `drago-clean`.
 Default value is `["drago-ex"]`.
 
 If a configured vendor folder does not exist in `vendor/`, the tools print a warning:
@@ -219,134 +227,77 @@ You can also run the commands manually from your terminal:
 ```bash
 vendor/bin/drago-install
 vendor/bin/drago-clean
-vendor/bin/drago-setup
 vendor/bin/drago-report
+vendor/bin/drago-diff
 ```
-
-### Install Report
-
-`drago-install` writes a log of every processed file to `drago-install.json` in the project root. The file is overwritten on each run.
-
-Each entry contains the package, section (`copy` or `replace`), action, source and destination:
-
-- `copied`: new file created.
-- `replaced`: existing file overwritten (`replace` section).
-- `skipped`: file already exists (`copy` section).
-- `error`: source not found.
-
-Show it with:
-
-```bash
-vendor/bin/drago-report
-vendor/bin/drago-report --package=translator
-vendor/bin/drago-report --action=skipped
-```
-
-```text
-drago-ex/translator
-  copied    app/Core/Translator/Panel.php
-  replaced  app/config/translator.neon [replace]
-```
-
-Add `drago-install.json` to `.gitignore` if you do not want it committed.
-
-### Cleanup
-
-`drago-clean` removes `resources/` directories from packages in configured vendor folders after their files have been copied or replaced into the project.
-
-This is useful when resource folders contain PHP classes or other files that are mirrored into the project. Leaving the same classes both in `vendor/` and in the project can cause duplicate class or namespace conflicts.
-
-Only package resource folders are removed. Installed Composer packages remain installed.
-
-Packages installed from local Composer `path` repositories may be symlinked into `vendor/`. In that case, `drago-clean` leaves their resource folders in place so it does not delete files from the source package. This also applies to directory junctions used for symlinks on Windows. Resource folders in regular package copies under `vendor/` are still removed.
-
-To test a local package as it behaves after a regular installation, configure the path repository to mirror packages instead of symlinking them:
-
-```json
-"repositories": [
-    {
-        "type": "path",
-        "url": "../packages/*",
-        "options": {
-            "symlink": false
-        }
-    }
-]
-```
-
-With `symlink: false`, Composer copies packages into `vendor/`, so `drago-clean` can remove only the copied resource folders while preserving the source repositories.
 
 ### Options
 
 - `--verbose` or `-v`: Show detailed file-by-file progress during installation.
-- `--dev`: Switches the destination directory to `resources/` in the current working directory. Useful for testing installation logic during package development.
+- `--dev`: For developing a resource package, see below.
 
-## Setup Commands
+### Report
 
-Packages can expose setup commands in `extra.drago-tools.commands`.
-These commands can be used for database migrations, generated permission classes or any other post-installation task.
+`drago-install` writes what it copied, replaced or skipped to `.drago-project/install.json`. The migrations
+(`drago-ex/migration`) and permissions (`drago-ex/permission`) write their reports to the same folder.
+Show them with:
+
+```bash
+vendor/bin/drago-report
+vendor/bin/drago-report --tool=install
+vendor/bin/drago-report --package=translator
+vendor/bin/drago-report --action=skipped
+```
+
+Commit `.drago-project/`, except `migration.json`, which differs per database.
+
+### Package Updates
+
+`drago-install` records in `.drago-project/installed.json` which package version installed each file. After
+`composer update`, `drago-diff` lists the files whose package changed them, and whether you edited them:
+
+```bash
+vendor/bin/drago-diff                          # files changed in their packages
+vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php            # what the package changed
+vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php --project  # your file against the new version
+vendor/bin/drago-diff --accept app/Presentation/Sign/SignPresenter.php   # after taking the changes over
+```
+
+It also lists new files of `replace-once` packages, which `drago-install` no longer copies after the first install.
+Nothing is overwritten; take the changes over by hand. The package versions are fetched by `composer archive`.
+
+### Cleanup
+
+`drago-clean` removes `resources/` directories of installed resource packages from `vendor/`, so the same classes
+are not both in `vendor/` and in the project. Symlinked packages (Composer `path` repositories) are left untouched.
+
+## Developing a Resource Package
+
+In a resource package, run `drago-install --dev`. It copies the resources of its dependencies into `.dev-resource/`,
+so PHPStan and tests can use their classes, and checks the package's own `copy` and `replace` rules: the report
+in `.dev-resource/.drago-project/install.json` shows where each own file goes in a project, a missing source
+and a file that a dependency installs too.
+
+Add `/.dev-resource/` to `.gitignore`, `scanDirectories: [.dev-resource]` to `phpstan.neon`, and load classes
+from `.dev-resource/app` after `resources/app` in `tests/bootstrap.php`. `drago-clean` deletes nothing in a resource package.
+
+## Project Setup
+
+The rest of the setup is done by the packages that own it:
+
+```bash
+php vendor/bin/migration db:migrate --packages
+php vendor/bin/create-permission --packages
+```
+
+### Migration Priority
+
+Order of the package migrations (lower first, default `100`), read by `drago-ex/migration`:
 
 ```json
 "extra": {
     "drago-tools": {
-        "commands-priority": 10,
-        "commands": {
-            "db:migrate-auth": "php vendor/bin/migration db:migrate vendor/drago-ex/project-auth/migrations",
-            "create:auth-permission": "php vendor/bin/create-auth-permission"
-        }
+        "migration-priority": 10
     }
 }
 ```
-
-Run the setup tool from the project root:
-
-```bash
-vendor/bin/drago-setup
-```
-
-Inside Docker, run it as the web user:
-
-```bash
-docker compose exec -u www-data server php vendor/bin/drago-setup
-```
-
-### Command Priority
-
-The package-level `commands-priority` value controls the order of setup commands from that package.
-Lower priority runs earlier. Default priority is `100`.
-
-Commands are sorted in two groups:
-
-1. Commands with labels starting with `db:` run first.
-   Use this prefix for database migrations and other database setup tasks.
-2. All other commands run afterwards, for example `create:*`, `generate:*` or `get:*`.
-
-Inside each group, commands are sorted by `commands-priority` first and by command label alphabetically second.
-This keeps migrations before application setup while still making the console order predictable.
-
-Command values can be plain strings. Object values are also supported for readability.
-Supported object keys are `run`, `command` and `bin`; `run` is the preferred form.
-
-### Setup Interaction
-
-- Select specific tasks by number, for example `1,3`.
-- Enter `a` to run all tasks sequentially.
-- Enter `q` to quit.
-
-`drago-setup` does not inspect the database or Nette container.
-It only discovers package commands and executes the selected shell command.
-Database-specific behavior, such as creating the `migrations` table, belongs to the migration command itself.
-
-## How it works
-
-1. `drago-install` scans configured vendors for the `extra.drago-tools.install` configuration.
-2. It resolves relative paths against the package root and the current working directory.
-3. It skips packages listed under `extra.drago-tools.packages` in the root `composer.json` with `"skip": true`.
-4. It runs all `copy` sections first.
-5. It runs `replace` sections afterwards, sorted by `install.replace-priority`.
-6. It can skip only `copy` or `replace` sections with `skip-copy` and `skip-replace`.
-7. It respects the `allow-library-install` flag in your root `composer.json` (defaults to `false` for libraries).
-8. Packages marked with `install.replace-once` automatically add `skip-replace: true` to the root `composer.json` after a successful replace run.
-9. `drago-clean` targets configured `vendor-names` and removes `resources` directories to keep your vendor clean after files have been mirrored to your project.
-10. `drago-install` logs every file action to `drago-install.json`; `drago-report` prints it.
-11. `drago-setup` scans configured vendors for `extra.drago-tools.commands` and runs selected setup commands in priority order.

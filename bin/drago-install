@@ -36,34 +36,100 @@ $projectRoot = getcwd();
 /**
  * PARAMETERS:
  * --verbose / -v : prints detailed information about copying
- * --dev          : switches the destination directory to resources/ for testing during package development
+ * --dev          : installs into .dev-resource/ of the package being developed, to check that the resources
+ *                  of its dependencies install and that all their classes are available (e.g. for PHPStan)
  */
 $verbose = in_array('--verbose', $argv, true) || in_array('-v', $argv, true);
 $isDevMode = in_array('--dev', $argv, true);
 
-// If we are in dev mode, the target is not the project root, but the resources folder in the current package
-$destinationRoot = $isDevMode ? $projectRoot . '/resources' : $projectRoot;
+const DevResourceDir = '.dev-resource';
 
-$stats = ['copied' => 0, 'skipped' => 0, 'errors' => 0];
+// In dev mode the resources go to a separate folder, so they never mix with or overwrite the package's own files.
+$destinationRoot = $isDevMode ? $projectRoot . '/' . DevResourceDir : $projectRoot;
+
+$stats = ['copied' => 0, 'replaced' => 0, 'skipped' => 0, 'error' => 0]
+	+ ($isDevMode ? ['planned' => 0, 'conflict' => 0] : []);
 $installOncePackages = [];
+$providedByPackage = [];
 $log = [];
 $currentPackage = '';
+$currentPackagePath = '';
 $currentSection = '';
 const ToolsExtraKey = 'drago-tools';
 const ResourcePackageType = 'drago-tools-resource';
 const DefaultVendorNames = ['drago-ex'];
-const LogFile = 'drago-install.json';
+const ReportFile = '.drago-project/install.json';
+const InstalledFile = '.drago-project/installed.json';
+const LegacyLogFile = 'drago-install.json';
+
+// Which package version installed each project file, kept across runs (unlike the report) for drago-diff.
+$installed = loadInstalled($projectRoot . '/' . InstalledFile);
 
 
-function logEntry(string $action, string $source, string $destination): void
+/** @return array<string, array{package: string, version: ?string, source: string, hash: string}> */
+function loadInstalled(string $path): array
 {
+	$data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+	return is_array($data['files'] ?? null) ? $data['files'] : [];
+}
+
+
+/** Content hash regardless of line endings, which Git may change on checkout. */
+function fileHash(string $file): string
+{
+	return sha1(str_replace("\r\n", "\n", (string) file_get_contents($file)));
+}
+
+
+/**
+ * Records which package version installed a file and with what content. A file that existed before the record
+ * did is adopted only when it equals the package file, so its base is known; a modified one stays unrecorded.
+ */
+function trackFile(string $source, string $destination, bool $adopt = false): void
+{
+	if ($GLOBALS['isDevMode']) {
+		return;
+	}
+
+	$key = relativeDestination($destination);
+	if ($adopt && (isset($GLOBALS['installed'][$key]) || fileHash($source) !== fileHash($destination))) {
+		return;
+	}
+
+	$package = $GLOBALS['currentPackage'];
+	$packagePath = rtrim($GLOBALS['currentPackagePath'], '/') . '/';
+	$source = normalizePath($source);
+	$GLOBALS['installed'][$key] = [
+		'package' => $package,
+		'version' => InstalledVersions::isInstalled($package) ? InstalledVersions::getPrettyVersion($package) : null,
+		'source' => str_starts_with($source, $packagePath) ? substr($source, strlen($packagePath)) : $source,
+		'hash' => fileHash($destination),
+	];
+}
+
+
+function writeInstalled(string $path, array $installed): void
+{
+	ksort($installed);
+	$json = json_encode(['files' => $installed], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+	if ($json === false || file_put_contents($path, $json . "\n") === false) {
+		echo "{$GLOBALS['yellow']}WARN Cannot write: {$path}{$GLOBALS['reset']}\n";
+	}
+}
+
+
+function logEntry(string $action, string $source, string $destination, ?string $message = null): void
+{
+	$package = $GLOBALS['currentPackage'];
 	$GLOBALS['log'][] = [
-		'package' => $GLOBALS['currentPackage'],
+		'package' => $package,
+		'version' => $package !== '' && InstalledVersions::isInstalled($package) ? InstalledVersions::getPrettyVersion($package) : null,
 		'section' => $GLOBALS['currentSection'],
 		'action' => $action,
 		'source' => $source,
 		'destination' => $destination,
-	];
+	] + ($message !== null ? ['message' => $message] : []);
+	$GLOBALS['stats'][$action]++;
 }
 
 
@@ -75,10 +141,41 @@ function relativePath(string $path): string
 }
 
 
-function writeInstallLog(string $path, array $log, array $stats, bool $isDevMode): void
+/** Removes `.` and `..` segments without resolving symlinks, which may point outside the project. */
+function normalizePath(string $path): string
+{
+	$path = str_replace('\\', '/', $path);
+	$prefix = preg_match('~^(?:[A-Za-z]:)?/~', $path, $m) === 1 ? $m[0] : '';
+	$segments = [];
+	foreach (explode('/', substr($path, strlen($prefix))) as $segment) {
+		if ($segment === '..' && $segments !== [] && end($segments) !== '..') {
+			array_pop($segments);
+		} elseif ($segment !== '.' && $segment !== '') {
+			$segments[] = $segment;
+		}
+	}
+
+	return $prefix . implode('/', $segments);
+}
+
+
+/** Place of an installed file in the project; in dev mode .dev-resource/ stands for the project. */
+function relativeDestination(string $path): string
+{
+	$root = rtrim(str_replace('\\', '/', $GLOBALS['destinationRoot']), '/') . '/';
+	$path = str_replace('\\', '/', $path);
+	return str_starts_with($path, $root) ? substr($path, strlen($root)) : $path;
+}
+
+
+/** Writes the report with the same header as the reports of drago-ex/migration and drago-ex/permission. */
+function writeInstallReport(string $path, array $log, array $stats, bool $isDevMode): void
 {
 	$data = [
+		'tool' => 'install',
+		'command' => 'drago-install' . ($isDevMode ? ' --dev' : ''),
 		'date' => date('c'),
+		'result' => $stats['error'] > 0 || ($stats['conflict'] ?? 0) > 0 ? 'error' : 'ok',
 		'dev' => $isDevMode,
 		'stats' => $stats,
 		'entries' => $log,
@@ -86,7 +183,7 @@ function writeInstallLog(string $path, array $log, array $stats, bool $isDevMode
 
 	$json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 	if ($json === false || file_put_contents($path, $json . "\n") === false) {
-		echo "{$GLOBALS['yellow']}WARN Cannot write log: {$path}{$GLOBALS['reset']}\n";
+		echo "{$GLOBALS['yellow']}WARN Cannot write report: {$path}{$GLOBALS['reset']}\n";
 	}
 }
 
@@ -131,27 +228,68 @@ function assertSafeVendorName(string $vendorName): void
 
 function copyFile(string $source, string $destination, bool $overwrite = false): void
 {
+	// The package's own version of a file wins, as it would in a project that installs the package.
+	if ($GLOBALS['isDevMode'] && isProvidedByPackage($destination)) {
+		// Remembered for planOwnResources(), which compares the package's own files with its dependencies.
+		$relative = ltrim(str_replace('\\', '/', substr($destination, strlen($GLOBALS['destinationRoot']))), '/');
+		$GLOBALS['providedByPackage'][$relative] = true;
+		message($destination, "{$GLOBALS['yellow']}SKIP provided by this package:{$GLOBALS['reset']}");
+		logEntry('skipped', relativePath($source), relativeDestination($destination), 'Provided by this package.');
+		return;
+	}
+
 	$existsBefore = file_exists($destination);
 	ensureDir(dirname($destination));
 
 	if (!$overwrite && $existsBefore) {
 		message($destination, "{$GLOBALS['yellow']}SKIP exists:{$GLOBALS['reset']}");
-		logEntry('skipped', relativePath($source), relativePath($destination));
-		$GLOBALS['stats']['skipped']++;
+		logEntry('skipped', relativePath($source), relativeDestination($destination));
+		trackFile($source, $destination, adopt: true);
 		return;
 	}
 
 	if (!copy($source, $destination)) {
-		$GLOBALS['stats']['errors']++;
 		throw new RuntimeException("Failed copying $source -> $destination");
 	}
 
-	$GLOBALS['stats']['copied']++;
-	logEntry(($overwrite && $existsBefore) ? 'replaced' : 'copied', relativePath($source), relativePath($destination));
+	trackFile($source, $destination);
+
+	logEntry(($overwrite && $existsBefore) ? 'replaced' : 'copied', relativePath($source), relativeDestination($destination));
 	$icon = ($overwrite && $existsBefore)
 			? "{$GLOBALS['green']}REPLACED:{$GLOBALS['reset']}"
 			: "{$GLOBALS['green']}COPIED:{$GLOBALS['reset']}";
 	message("$source -> $destination", $icon);
+}
+
+
+function isProvidedByPackage(string $destination): bool
+{
+	$relative = substr($destination, strlen($GLOBALS['destinationRoot']));
+	return is_file($GLOBALS['projectRoot'] . '/resources' . $relative);
+}
+
+
+/** Removes the dev folder from the previous run, so it matches the current dependencies. */
+function clearDevResources(string $dir): void
+{
+	if (basename($dir) !== DevResourceDir || !is_dir($dir) || is_link($dir)) {
+		return;
+	}
+
+	$iterator = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+		RecursiveIteratorIterator::CHILD_FIRST,
+	);
+
+	foreach ($iterator as $item) {
+		if ($item->isDir() && !$item->isLink()) {
+			rmdir($item->getPathname());
+		} else {
+			unlink($item->getPathname());
+		}
+	}
+
+	rmdir($dir);
 }
 
 
@@ -245,7 +383,7 @@ function installPackageResources(
 	}
 
 	$hasReplace = !empty($install['replace']);
-	$errorsBefore = $GLOBALS['stats']['errors'];
+	$errorsBefore = $GLOBALS['stats']['error'];
 
 	foreach ($sections as $sectionName => $overwrite) {
 		if ($onlySection !== null && $sectionName !== $onlySection) {
@@ -263,6 +401,7 @@ function installPackageResources(
 		}
 
 		$GLOBALS['currentPackage'] = $packageName;
+		$GLOBALS['currentPackagePath'] = $packagePath;
 		$GLOBALS['currentSection'] = $sectionName;
 
 		foreach ($items as $srcRel => $dstRel) {
@@ -273,10 +412,16 @@ function installPackageResources(
 
 			$source = $packagePath . '/' . $srcRel;
 
+			// drago-clean removes resources/ after installation, so on later runs they are already in the project.
+			if (!file_exists($source) && isCleanedResource((string) $srcRel, $packagePath)) {
+				message($source, '[skip] resources already installed and cleaned:');
+				logEntry('skipped', relativePath($source), '');
+				continue;
+			}
+
 			if (!file_exists($source)) {
 				message($source, "{$GLOBALS['red']}ERROR source not found:{$GLOBALS['reset']}");
-				$GLOBALS['stats']['errors']++;
-				logEntry('error', relativePath($source), '');
+				logEntry('error', relativePath($source), '', 'Source not found.');
 				continue;
 			}
 
@@ -301,10 +446,85 @@ function installPackageResources(
 		($onlySection === null || $onlySection === 'replace')
 		&& isReplaceOnce($dragoConfig)
 		&& $hasReplace
-		&& $GLOBALS['stats']['errors'] === $errorsBefore
+		&& $GLOBALS['stats']['error'] === $errorsBefore
 	) {
 		$GLOBALS['installOncePackages'][] = $packageName;
 	}
+}
+
+
+/**
+ * In dev mode, checks the install rules of the package being developed without copying its files: they stay
+ * in resources/, a copy would declare their classes twice. Each file is reported with the place it gets in
+ * a project; a missing source or an unsafe path is an error, and a file that a dependency already installs
+ * and this package does not replace is a conflict.
+ */
+function planOwnResources(string $packageName, array $install): void
+{
+	$GLOBALS['currentPackage'] = $packageName;
+	foreach (['copy', 'replace'] as $sectionName) {
+		$GLOBALS['currentSection'] = $sectionName;
+		foreach ($install[$sectionName] ?? [] as $srcRel => $dstRel) {
+			try {
+				assertSafeRelativePath((string) $srcRel, 'source');
+				if ($dstRel !== '') {
+					assertSafeRelativePath((string) $dstRel, 'destination');
+				}
+			} catch (RuntimeException $e) {
+				message($e->getMessage(), "{$GLOBALS['red']}ERROR:{$GLOBALS['reset']}", true);
+				logEntry('error', (string) $srcRel, (string) $dstRel, $e->getMessage());
+				continue;
+			}
+
+			$source = $GLOBALS['projectRoot'] . '/' . $srcRel;
+			if (!file_exists($source)) {
+				message("$srcRel ($packageName)", "{$GLOBALS['red']}ERROR source not found:{$GLOBALS['reset']}", true);
+				logEntry('error', (string) $srcRel, '', 'Source not found.');
+				continue;
+			}
+
+			$destination = $dstRel === '' ? basename($source) : rtrim((string) $dstRel, '/');
+			if (is_file($source)) {
+				// The same rule as for installation: a destination without an extension is a directory.
+				if (!pathinfo($destination, PATHINFO_EXTENSION)) {
+					$destination .= '/' . basename($source);
+				}
+				planFile($source, $destination, $sectionName === 'replace');
+				continue;
+			}
+
+			$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS));
+			foreach ($iterator as $item) {
+				if ($item->isFile()) {
+					$subPath = str_replace('\\', '/', substr($item->getPathname(), strlen($source) + 1));
+					planFile($item->getPathname(), $destination . '/' . $subPath, $sectionName === 'replace');
+				}
+			}
+		}
+	}
+}
+
+
+/** Reports where a file of the package being developed goes in a project, compared with its dependencies. */
+function planFile(string $source, string $destination, bool $overwrite): void
+{
+	$installedByDependency = is_file($GLOBALS['destinationRoot'] . '/' . $destination)
+		|| isset($GLOBALS['providedByPackage'][$destination]);
+	if ($installedByDependency && !$overwrite) {
+		message("$destination is also installed by a dependency", "{$GLOBALS['red']}CONFLICT:{$GLOBALS['reset']}", true);
+		logEntry('conflict', relativePath($source), $destination, 'A dependency installs the same file; copy keeps the one installed first, use replace to override it.');
+		return;
+	}
+
+	message(relativePath($source) . " -> $destination", "{$GLOBALS['blue']}PLANNED:{$GLOBALS['reset']}");
+	logEntry('planned', relativePath($source), $destination, $installedByDependency ? 'Replaces the file of a dependency.' : null);
+}
+
+
+function isCleanedResource(string $sourceRelative, string $packagePath): bool
+{
+	$isResource = $sourceRelative === 'resources' || str_starts_with($sourceRelative, 'resources/');
+	return $isResource && !is_dir($packagePath . '/resources');
 }
 
 
@@ -386,6 +606,7 @@ warnMissingVendorNames($projectRoot, $vendorNames);
 $rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
 
 if ($isDevMode) {
+	clearDevResources($destinationRoot);
 	message("Dev mode active: redirecting output to $destinationRoot", "{$blue}DEV:{$reset}", true);
 }
 
@@ -415,6 +636,9 @@ foreach (InstalledVersions::getInstalledPackages() as $packageName) {
 		continue;
 	}
 
+	// Composer reports e.g. vendor/composer/../drago-ex/x; the report shows vendor/drago-ex/x.
+	$packagePath = normalizePath($packagePath);
+
 	$packages[] = [
 		'name' => $packageName,
 		'path' => $packagePath,
@@ -435,6 +659,8 @@ foreach ($packages as $package) {
 
 	} catch (Throwable $e) {
 		message("Error in {$package['name']}: " . $e->getMessage(), "{$red}ERROR:{$reset}", true);
+		[$currentPackage, $currentSection] = [$package['name'], 'copy'];
+		logEntry('error', '', '', $e->getMessage());
 		continue;
 	}
 }
@@ -454,15 +680,34 @@ foreach ($packages as $package) {
 
 	} catch (Throwable $e) {
 		message("Error in {$package['name']}: " . $e->getMessage(), "{$red}ERROR:{$reset}", true);
+		[$currentPackage, $currentSection] = [$package['name'], 'replace'];
+		logEntry('error', '', '', $e->getMessage());
 		continue;
 	}
 }
 if (!$isDevMode) {
 	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
+} else {
+	$ownInstall = $rootComposer['extra'][ToolsExtraKey]['install'] ?? [];
+	if (!empty($ownInstall['copy']) || !empty($ownInstall['replace'])) {
+		planOwnResources($rootPackageName ?? (string) ($rootComposer['name'] ?? 'root'), $ownInstall);
+	}
 }
 
-$logPath = $projectRoot . '/' . LogFile;
-writeInstallLog($logPath, $log, $stats, $isDevMode);
+// In dev mode .dev-resource/ stands for the project, so the report goes to its .drago-project/.
+$reportPath = $destinationRoot . '/' . ReportFile;
+ensureDir(dirname($reportPath));
+writeInstallReport($reportPath, $log, $stats, $isDevMode);
+if (!$isDevMode) {
+	writeInstalled($projectRoot . '/' . InstalledFile, $installed);
+}
 
-echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['skipped']} skipped, {$stats['errors']} errors){$reset}\n";
-echo 'Log: ' . LogFile . " (view with: vendor/bin/drago-report)\n";
+echo "{$green}OK Finished ({$stats['copied']} copied, {$stats['replaced']} replaced, {$stats['skipped']} skipped, {$stats['error']} errors){$reset}\n";
+if ($isDevMode) {
+	$ownColor = $stats['conflict'] > 0 ? $red : $blue;
+	echo "{$ownColor}INFO Own resources: {$stats['planned']} files checked, {$stats['conflict']} conflicts{$reset}\n";
+}
+echo 'Report: ' . ($isDevMode ? DevResourceDir . '/' : '') . ReportFile . " (view with: vendor/bin/drago-report)\n";
+if (!$isDevMode && is_file($projectRoot . '/' . LegacyLogFile)) {
+	echo "{$blue}INFO " . LegacyLogFile . " is no longer written, you can delete it.{$reset}\n";
+}
