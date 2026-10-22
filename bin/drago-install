@@ -314,7 +314,9 @@ function recursiveCopy(string $source, string $destination, bool $overwrite = fa
 function normalizeVendorNames(mixed $vendorNames): array
 {
 	if (is_string($vendorNames) && $vendorNames !== '') {
-		return [$vendorNames];
+		$vendorName = trim($vendorNames, '/');
+		assertSafeVendorName($vendorName);
+		return [$vendorName];
 	}
 
 	if (!is_array($vendorNames)) {
@@ -549,37 +551,61 @@ function getPackageReplacePriority(string $packagePath): int
 }
 
 
-function writeRootComposer(string $rootComposerPath, array $rootComposer): void
+/**
+ * Writes the root composer.json decoded as objects, so empty objects ({}) stay objects, and with the indentation
+ * of the file (e.g. tabs), as Composer itself keeps it; json_encode() indents by four spaces.
+ */
+function writeRootComposer(string $rootComposerPath, stdClass $rootComposer, string $original): void
 {
 	$json = json_encode($rootComposer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 	if ($json === false) {
 		throw new RuntimeException('Cannot encode root composer.json.');
 	}
 
+	if (preg_match('~^([ \t]+)"~m', $original, $m) === 1 && $m[1] !== '    ') {
+		$indent = $m[1];
+		$json = (string) preg_replace_callback('~^(?: {4})+~m', fn(array $s): string => str_repeat($indent, intdiv(strlen($s[0]), 4)), $json);
+	}
+
 	file_put_contents($rootComposerPath, $json . "\n");
 }
 
 
-function markInstallOncePackages(string $rootComposerPath, array $rootComposer, array $packageNames): void
+function markInstallOncePackages(string $rootComposerPath, array $packageNames): void
 {
 	if ($packageNames === []) {
 		return;
 	}
 
+	$original = (string) file_get_contents($rootComposerPath);
+	$rootComposer = json_decode($original);
+	if (!$rootComposer instanceof stdClass) {
+		throw new RuntimeException('Cannot read root composer.json.');
+	}
+
+	// A missing key, or an empty one written as [], becomes an object.
+	$object = static function (stdClass $parent, string $key): stdClass {
+		if (!($parent->{$key} ?? null) instanceof stdClass) {
+			$parent->{$key} = new stdClass;
+		}
+
+		return $parent->{$key};
+	};
+
 	$changed = false;
 	foreach (array_unique($packageNames) as $packageName) {
-		$current = $rootComposer['extra'][ToolsExtraKey]['packages'][$packageName]['skip-replace'] ?? false;
-		if ($current === true) {
+		$options = $object($object($object($object($rootComposer, 'extra'), ToolsExtraKey), 'packages'), $packageName);
+		if (($options->{'skip-replace'} ?? false) === true) {
 			continue;
 		}
 
-		$rootComposer['extra'][ToolsExtraKey]['packages'][$packageName]['skip-replace'] = true;
+		$options->{'skip-replace'} = true;
 		$changed = true;
 		message("Marked package replace section as install-once: $packageName", '[once]', true);
 	}
 
 	if ($changed) {
-		writeRootComposer($rootComposerPath, $rootComposer);
+		writeRootComposer($rootComposerPath, $rootComposer, $original);
 	}
 }
 
@@ -686,7 +712,7 @@ foreach ($packages as $package) {
 	}
 }
 if (!$isDevMode) {
-	markInstallOncePackages($rootComposerPath, $rootComposer, $installOncePackages);
+	markInstallOncePackages($rootComposerPath, $installOncePackages);
 } else {
 	$ownInstall = $rootComposer['extra'][ToolsExtraKey]['install'] ?? [];
 	if (!empty($ownInstall['copy']) || !empty($ownInstall['replace'])) {

@@ -6,7 +6,7 @@ Use this file as package-specific guidance when working in this repository. Keep
 - **Package**: `drago-ex/project-tools`
 - **Type**: library
 - **Purpose**: Installation and cleanup tools for Drago projects.
-- **PHP**: >=8.3
+- **PHP**: >=8.3 <9
 - **Runtime dependencies**: composer-runtime-api (^2.0)
 - **License**: MIT
 
@@ -18,6 +18,7 @@ Use this file as package-specific guidance when working in this repository. Keep
 ## Key Parts
 - Design intent: resource packages are minimal starting points; copied files become project code that each project customizes. `composer update` must never overwrite them (`copy` skips existing files, `replace-once` replaces only once). Do not propose moving that code into libraries or overwriting it on update; see "The Idea Behind Drago Packages" in the README.
 - `bin/drago-install` copies and replaces package resources into the project (with `--dev` into `.dev-resource/` of the package being developed); `bin/drago-clean` then deletes `resources/` only from packages whose resources are installed (type `drago-tools-resource`, or libraries with install rules when `allow-library-install` is on).
+- After a successful `replace-once` package, `drago-install` sets `skip-replace` in the root composer.json. The file is decoded as objects (empty `{}` must not become `[]`) and written with its own indentation (tabs stay tabs), like Composer does.
 - `drago-install --dev` also checks the root package's own install rules without copying them (`planOwnResources()`): own files are reported as `planned` with their project path, a missing source or unsafe path as `error`, an own `copy` file that a dependency installs too as `conflict` (dependency files skipped as "provided by this package" are remembered in `$providedByPackage` for that). Destinations in the report are relative to the project (`.dev-resource/` in dev mode).
 - `drago-clean` exits without deleting anything when the root package is a `drago-tools-resource`: there the dependencies' `resources/` are the source for the next `drago-install --dev`, which recreates `.dev-resource/`.
 - There is no setup runner (`drago-setup` was removed): migrations (`migration db:migrate --packages`, order by `extra.drago-tools.migration-priority`) and permission providers (`create-permission --packages`, declared in `extra.drago-permission`) have their own consoles that do not depend on this package.

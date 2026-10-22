@@ -60,6 +60,24 @@ function currentVersion(string $package): ?string
 }
 
 
+function deleteDir(string $dir): void
+{
+	if (!is_dir($dir) || is_link($dir)) {
+		return;
+	}
+
+	$iterator = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+		RecursiveIteratorIterator::CHILD_FIRST,
+	);
+	foreach ($iterator as $item) {
+		$item->isDir() && !$item->isLink() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+	}
+
+	rmdir($dir);
+}
+
+
 /** Directory with the package files of a version: vendor/ when it is the installed one and complete, otherwise an archive. */
 function packageFiles(string $package, string $version, string $source): ?string
 {
@@ -75,7 +93,11 @@ function packageFiles(string $package, string $version, string $source): ?string
 		return $cache["$package@$version"];
 	}
 
+	// A branch version (dev-main) changes over time, so its archive is fetched again on each run.
 	$dir = sys_get_temp_dir() . '/drago-diff/' . str_replace('/', '-', $package) . '-' . preg_replace('~[^\w.-]~', '_', $version);
+	if (str_starts_with($version, 'dev-') || str_ends_with($version, '-dev')) {
+		deleteDir($dir);
+	}
 	if (!is_dir($dir)) {
 		@mkdir($dir, 0o777, true);
 		// Run outside the project: inside it, Composer does not find resource packages of other versions.
@@ -191,7 +213,13 @@ function showDiff(string $old, string $new, string $oldLabel, string $newLabel):
 		escapeshellarg($old),
 		escapeshellarg($new),
 	);
-	exec($command, $output);
+	// git diff exits with 0 without differences, 1 with them, anything else is an error (e.g. git is missing)
+	exec($command . ' 2>&1', $output, $code);
+	if ($code > 1) {
+		echo "{$GLOBALS['red']}ERROR: git diff failed: " . implode("\n", $output) . "{$GLOBALS['reset']}\n";
+		exit(1);
+	}
+
 	if ($output === []) {
 		echo "No differences.\n";
 		return;
