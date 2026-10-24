@@ -267,6 +267,8 @@ vendor/bin/drago-diff --accept app/Presentation/Sign/SignPresenter.php   # po p�
 
 Vypíše také nové soubory balíčků s `replace-once`, které `drago-install` po první instalaci už nekopíruje.
 Nic se nepřepisuje; změny převezměte ručně. Verze balíčků se stahují přes `composer archive`.
+Větev (`dev-main`) se zaznamená i s commitem, takže se vypíše i novější commit; jeho starší commit nejde stáhnout,
+proto pak `drago-diff <soubor>` porovná váš soubor s novou verzí.
 
 ### Úklid
 

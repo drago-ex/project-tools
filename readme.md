@@ -267,6 +267,8 @@ vendor/bin/drago-diff --accept app/Presentation/Sign/SignPresenter.php   # after
 
 It also lists new files of `replace-once` packages, which `drago-install` no longer copies after the first install.
 Nothing is overwritten; take the changes over by hand. The package versions are fetched by `composer archive`.
+A branch version (`dev-main`) is recorded with its commit, so a newer commit is reported too; its older commit cannot
+be fetched, so `drago-diff <file>` then compares your file with the new version.
 
 ### Cleanup
 

@@ -60,6 +60,37 @@ function currentVersion(string $package): ?string
 }
 
 
+function currentReference(string $package): ?string
+{
+	return InstalledVersions::isInstalled($package) ? InstalledVersions::getReference($package) : null;
+}
+
+
+function isBranch(string $version): bool
+{
+	return str_starts_with($version, 'dev-') || str_ends_with($version, '-dev');
+}
+
+
+/**
+ * Whether the installed package is the one that installed the file: the same version and, when recorded,
+ * the same commit, because a branch version (dev-main) moves on under the same name.
+ * @param array{package: string, version: ?string, reference?: ?string} $record
+ */
+function isRecordedInstall(array $record): bool
+{
+	return currentVersion($record['package']) === $record['version']
+		&& (($record['reference'] ?? null) === null || currentReference($record['package']) === $record['reference']);
+}
+
+
+/** A branch version shows its commit, e.g. "dev-main (a57c5d7)". */
+function versionLabel(?string $version, ?string $reference): string
+{
+	return (string) $version . ($version !== null && $reference !== null && isBranch($version) ? ' (' . substr($reference, 0, 7) . ')' : '');
+}
+
+
 function deleteDir(string $dir): void
 {
 	if (!is_dir($dir) || is_link($dir)) {
@@ -95,7 +126,7 @@ function packageFiles(string $package, string $version, string $source): ?string
 
 	// A branch version (dev-main) changes over time, so its archive is fetched again on each run.
 	$dir = sys_get_temp_dir() . '/drago-diff/' . str_replace('/', '-', $package) . '-' . preg_replace('~[^\w.-]~', '_', $version);
-	if (str_starts_with($version, 'dev-') || str_ends_with($version, '-dev')) {
+	if (isBranch($version)) {
 		deleteDir($dir);
 	}
 	if (!is_dir($dir)) {
@@ -125,27 +156,28 @@ function packageFiles(string $package, string $version, string $source): ?string
 
 
 /**
- * @param array{package: string, version: ?string, source: string, hash: string} $record
- * @return array{upstream: string, local: string, current: ?string}
+ * @param array{package: string, version: ?string, reference?: ?string, source: string, hash: string} $record
+ * @return array{upstream: string, local: string, current: ?string, reference: ?string}
  */
 function fileStatus(string $projectRoot, string $path, array $record): array
 {
 	$local = !is_file("$projectRoot/$path") ? 'deleted' : (fileHash("$projectRoot/$path") === $record['hash'] ? 'unchanged' : 'modified');
 	$current = currentVersion($record['package']);
+	$reference = currentReference($record['package']);
 	if ($current === null) {
-		return ['upstream' => 'package removed', 'local' => $local, 'current' => null];
+		return ['upstream' => 'package removed', 'local' => $local, 'current' => null, 'reference' => null];
 	}
-	if ($current === $record['version']) {
-		return ['upstream' => 'unchanged', 'local' => $local, 'current' => $current];
+	if (isRecordedInstall($record)) {
+		return ['upstream' => 'unchanged', 'local' => $local, 'current' => $current, 'reference' => $reference];
 	}
 
 	$dir = packageFiles($record['package'], $current, $record['source']);
 	if ($dir === null) {
-		return ['upstream' => 'unknown', 'local' => $local, 'current' => $current];
+		return ['upstream' => 'unknown', 'local' => $local, 'current' => $current, 'reference' => $reference];
 	}
 
 	$upstream = !is_file("$dir/{$record['source']}") ? 'removed' : (fileHash("$dir/{$record['source']}") === $record['hash'] ? 'unchanged' : 'changed');
-	return ['upstream' => $upstream, 'local' => $local, 'current' => $current];
+	return ['upstream' => $upstream, 'local' => $local, 'current' => $current, 'reference' => $reference];
 }
 
 
@@ -244,24 +276,40 @@ if ($file !== null && !$accept) {
 	}
 
 	$current = currentVersion($record['package']) ?? $record['version'];
-	$new = packageFiles($record['package'], $current, $record['source']);
+	$currentLabel = $record['package'] . ' ' . versionLabel($current, currentReference($record['package']));
+	$recordedLabel = $record['package'] . ' ' . versionLabel($record['version'], $record['reference'] ?? null);
+	$new = packageFiles($record['package'], (string) $current, $record['source']);
 	if ($new === null || !is_file("$new/{$record['source']}")) {
 		echo "{$red}ERROR: {$record['source']} is not in {$record['package']} $current.{$reset}\n";
 		exit(1);
 	}
 
-	if ($compareProject) {
-		showDiff("$projectRoot/$file", "$new/{$record['source']}", "$file (project)", "{$record['package']} $current");
+	// composer archive fetches only the newest commit of a branch, so a recorded older commit cannot be fetched;
+	// the project file stands for it when it was not edited since the install.
+	$oldFetchable = $record['version'] !== null && (!isBranch($record['version']) || isRecordedInstall($record));
+	if ($compareProject || !$oldFetchable) {
+		if (!is_file("$projectRoot/$file")) {
+			echo "{$red}ERROR: $file was deleted in the project" . ($compareProject ? '' : " and $recordedLabel cannot be fetched (an older commit of a branch)") . ".{$reset}\n";
+			exit(1);
+		}
+
+		if (!$compareProject) {
+			echo fileHash("$projectRoot/$file") === $record['hash']
+				? "$recordedLabel cannot be fetched (an older commit of a branch); the project file is unchanged since the install, so it is compared instead.\n"
+				: "{$yellow}WARN $recordedLabel cannot be fetched (an older commit of a branch); the project file is compared instead and it was edited, so the diff shows the project's own changes too.{$reset}\n";
+		}
+
+		showDiff("$projectRoot/$file", "$new/{$record['source']}", "$file (project)", $currentLabel);
 		exit(0);
 	}
 
-	$old = packageFiles($record['package'], (string) $record['version'], $record['source']);
+	$old = packageFiles($record['package'], $record['version'], $record['source']);
 	if ($old === null || !is_file("$old/{$record['source']}")) {
 		echo "{$red}ERROR: Cannot fetch {$record['package']} {$record['version']}.{$reset}\n";
 		exit(1);
 	}
 
-	showDiff("$old/{$record['source']}", "$new/{$record['source']}", "{$record['package']} {$record['version']}", "{$record['package']} $current");
+	showDiff("$old/{$record['source']}", "$new/{$record['source']}", $recordedLabel, $currentLabel);
 	exit(0);
 }
 
@@ -294,8 +342,8 @@ if ($accept) {
 			continue;
 		}
 
-		$installed[$path] = ['version' => $status['current'], 'hash' => fileHash("$dir/{$record['source']}")] + $record;
-		echo "{$green}ACCEPTED: $path ({$record['package']} {$status['current']}){$reset}\n";
+		$installed[$path] = ['version' => $status['current'], 'reference' => $status['reference'], 'hash' => fileHash("$dir/{$record['source']}")] + $record;
+		echo "{$green}ACCEPTED: $path ({$record['package']} " . versionLabel($status['current'], $status['reference']) . "){$reset}\n";
 	}
 
 	ksort($installed);
@@ -314,7 +362,8 @@ foreach ($changed as $path => $status) {
 
 foreach ($grouped as $package => $files) {
 	$first = current($files);
-	echo "{$blue}$package{$reset} {$first['record']['version']} -> " . ($first['current'] ?? '(removed)') . "\n";
+	echo "{$blue}$package{$reset} " . versionLabel($first['record']['version'], $first['record']['reference'] ?? null) . ' -> '
+		. ($first['current'] !== null ? versionLabel($first['current'], $first['reference']) : '(removed)') . "\n";
 	foreach ($files as $path => $status) {
 		$hint = match (true) {
 			$status['upstream'] === 'changed' && $status['local'] === 'unchanged' => 'not edited in the project, the new version can be taken as it is',

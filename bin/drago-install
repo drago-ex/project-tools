@@ -66,7 +66,7 @@ const LegacyLogFile = 'drago-install.json';
 $installed = loadInstalled($projectRoot . '/' . InstalledFile);
 
 
-/** @return array<string, array{package: string, version: ?string, source: string, hash: string}> */
+/** @return array<string, array{package: string, version: ?string, reference?: ?string, source: string, hash: string}> */
 function loadInstalled(string $path): array
 {
 	$data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
@@ -97,11 +97,14 @@ function trackFile(string $source, string $destination, bool $adopt = false): vo
 	}
 
 	$package = $GLOBALS['currentPackage'];
+	$isInstalled = InstalledVersions::isInstalled($package);
 	$packagePath = rtrim($GLOBALS['currentPackagePath'], '/') . '/';
 	$source = normalizePath($source);
 	$GLOBALS['installed'][$key] = [
 		'package' => $package,
-		'version' => InstalledVersions::isInstalled($package) ? InstalledVersions::getPrettyVersion($package) : null,
+		'version' => $isInstalled ? InstalledVersions::getPrettyVersion($package) : null,
+		// the commit tells apart two installs of a branch version (dev-main) for drago-diff
+		'reference' => $isInstalled ? InstalledVersions::getReference($package) : null,
 		'source' => str_starts_with($source, $packagePath) ? substr($source, strlen($packagePath)) : $source,
 		'hash' => fileHash($destination),
 	];
