@@ -259,10 +259,10 @@ Složku `.drago-project/` commitněte, kromě `migration.json`, který se liší
 `composer update` vypíše `drago-diff` soubory, které jejich balíček změnil, a zda jste je upravili:
 
 ```bash
-vendor/bin/drago-diff                          # soubory změněné v jejich balíčcích
-vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php            # co změnil balíček
-vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php --project  # váš soubor proti nové verzi
-vendor/bin/drago-diff --accept app/Presentation/Sign/SignPresenter.php   # po převzetí změn
+vendor/bin/drago-diff                          # files changed in their packages
+vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php            # what the package changed
+vendor/bin/drago-diff app/Presentation/Sign/SignPresenter.php --project  # your file against the new version
+vendor/bin/drago-diff --accept app/Presentation/Sign/SignPresenter.php   # after taking the changes over
 ```
 
 Vypíše také nové soubory balíčků s `replace-once`, které `drago-install` po první instalaci už nekopíruje.
