@@ -1,7 +1,5 @@
 # Drago Project Tools
 
-[English](readme.md) | Čeština
-
 Nástroje pro automatickou instalaci a úklid zdrojů projektu z balíčků Composeru.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/drago-ex/project-tools/blob/main/license)

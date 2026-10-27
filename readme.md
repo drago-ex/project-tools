@@ -1,7 +1,5 @@
 # Drago Project Tools
 
-English | [Čeština](readme.cs.md)
-
 Tools for automatic installation and cleanup of project resources from Composer packages.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/drago-ex/project-tools/blob/main/license)
