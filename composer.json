@@ -11,6 +11,7 @@
 		"bin/drago-install",
 		"bin/drago-clean",
 		"bin/drago-report",
-		"bin/drago-diff"
+		"bin/drago-diff",
+		"bin/drago-commands"
 	]
 }

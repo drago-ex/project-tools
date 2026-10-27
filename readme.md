@@ -33,8 +33,9 @@ project, so a fix released in a package has to be taken over by hand; `drago-dif
 
 - **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
 - **`drago-clean`**: Cleans up redundant resource folders in configured vendor folders to prevent class duplication or namespace collisions.
+- **`drago-commands`**: Runs the scripts that installed packages list in `extra.drago-tools.commands`.
 - **`drago-report`**: Shows the reports in `.drago-project/`: what `drago-install` copied, replaced or skipped,
-  and which migrations and permission providers were set up.
+  which migrations ran and which package commands ran.
 - **`drago-diff`**: Shows the project files whose package changed them since they were installed.
 
 ## Configuration
@@ -229,6 +230,7 @@ vendor/bin/drago-install
 vendor/bin/drago-clean
 vendor/bin/drago-report
 vendor/bin/drago-diff
+vendor/bin/drago-commands
 ```
 
 ### Options
@@ -239,7 +241,7 @@ vendor/bin/drago-diff
 ### Report
 
 `drago-install` writes what it copied, replaced or skipped to `.drago-project/install.json`. The migrations
-(`drago-ex/migration`) and permissions (`drago-ex/permission`) write their reports to the same folder.
+(`drago-ex/migration`) and `drago-commands` write their reports to the same folder.
 Show them with:
 
 ```bash
@@ -289,8 +291,24 @@ The rest of the setup is done by the packages that own it:
 
 ```bash
 php vendor/bin/migration db:migrate --packages
-php vendor/bin/create-permission --packages
+php vendor/bin/drago-commands
 ```
+
+### Package Commands
+
+A package lists the scripts that `drago-commands` runs from the project root, for example the generator of its
+permission providers. Paths are relative to the package, names are optional:
+
+```json
+"extra": {
+    "drago-tools": {
+        "commands": ["bin/create-front-permission"]
+    }
+}
+```
+
+`drago-commands` runs the scripts of all installed packages, in package name order, and writes
+`.drago-project/commands.json`.
 
 ### Migration Priority
 

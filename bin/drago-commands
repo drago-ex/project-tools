@@ -1,0 +1,244 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Composer\InstalledVersions;
+
+$blue = "\033[34m";
+$green = "\033[32m";
+$yellow = "\033[33m";
+$red = "\033[31m";
+$reset = "\033[0m";
+
+// Try to find composer's autoload
+$autoloadPaths = [
+	getcwd() . '/vendor/autoload.php',
+	__DIR__ . '/../../../autoload.php',
+	__DIR__ . '/../vendor/autoload.php',
+];
+
+$autoloadFound = false;
+foreach ($autoloadPaths as $path) {
+	if (file_exists($path)) {
+		require $path;
+		$autoloadFound = true;
+		break;
+	}
+}
+
+if (!$autoloadFound) {
+	die("{$red}ERROR: composer autoload.php not found. Run 'composer install' first.{$reset}\n");
+}
+
+$projectRoot = getcwd();
+
+/**
+ * Runs the scripts that installed packages list in extra.drago-tools.commands, from the project root.
+ * The list holds paths to PHP scripts inside the package; keys are optional names shown in the output:
+ *   "commands": ["bin/create-front-permission"]
+ *   "commands": {"permission": "bin/create-front-permission"}
+ * Packages run in name order, their scripts in the listed order.
+ */
+const ToolsExtraKey = 'drago-tools';
+const DefaultVendorNames = ['drago-ex'];
+const ReportFile = '.drago-project/commands.json';
+
+$stats = ['executed' => 0, 'failed' => 0, 'error' => 0];
+$log = [];
+
+
+function logEntry(string $package, string $action, string $script, ?string $message = null): void
+{
+	$GLOBALS['log'][] = array_filter([
+		'package' => $package,
+		'version' => InstalledVersions::isInstalled($package) ? InstalledVersions::getPrettyVersion($package) : null,
+		'action' => $action,
+		'source' => $script,
+		'message' => $message,
+	], fn(?string $value): bool => $value !== null);
+	$GLOBALS['stats'][$action]++;
+}
+
+
+function assertSafeRelativePath(string $path): void
+{
+	$normalized = str_replace('\\', '/', $path);
+	if (
+		$normalized === ''
+		|| str_starts_with($normalized, '/')
+		|| preg_match('~^[A-Za-z]:/~', $normalized) === 1
+		|| in_array('..', explode('/', $normalized), true)
+	) {
+		throw new RuntimeException("Unsafe command path: $path");
+	}
+}
+
+
+function assertSafeVendorName(string $vendorName): void
+{
+	if (preg_match('~^[a-z0-9][a-z0-9._-]*$~', $vendorName) !== 1) {
+		throw new RuntimeException("Unsafe vendor name: $vendorName");
+	}
+}
+
+
+function normalizeVendorNames(mixed $vendorNames): array
+{
+	if (is_string($vendorNames) && $vendorNames !== '') {
+		$vendorName = trim($vendorNames, '/');
+		assertSafeVendorName($vendorName);
+		return [$vendorName];
+	}
+
+	if (!is_array($vendorNames)) {
+		return DefaultVendorNames;
+	}
+
+	$normalized = [];
+	foreach ($vendorNames as $vendorName) {
+		if (is_string($vendorName) && $vendorName !== '') {
+			$vendorName = trim($vendorName, '/');
+			assertSafeVendorName($vendorName);
+			$normalized[] = $vendorName;
+		}
+	}
+
+	return $normalized !== [] ? array_values(array_unique($normalized)) : DefaultVendorNames;
+}
+
+
+function isAllowedVendor(string $packageName, array $vendorNames): bool
+{
+	foreach ($vendorNames as $vendorName) {
+		if (str_starts_with($packageName, $vendorName . '/')) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
+/** Runs a package script with the current PHP from the project root; its output goes straight to the console. */
+function runScript(string $script, string $projectRoot): int
+{
+	$process = proc_open([PHP_BINARY, $script], [STDIN, STDOUT, STDERR], $pipes, $projectRoot);
+	if (!is_resource($process)) {
+		throw new RuntimeException("Cannot start: $script");
+	}
+
+	return proc_close($process);
+}
+
+
+/** Writes the report with the same header as the other reports in .drago-project/. */
+function writeReport(string $path, array $log, array $stats): void
+{
+	$data = [
+		'tool' => 'commands',
+		'command' => 'drago-commands',
+		'date' => date('c'),
+		'result' => $stats['failed'] > 0 || $stats['error'] > 0 ? 'error' : 'ok',
+		'stats' => $stats,
+		'entries' => $log,
+	];
+
+	$json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+	if (
+		$json === false
+		|| (!is_dir(dirname($path)) && !mkdir(dirname($path), 0o777, true))
+		|| file_put_contents($path, $json . "\n") === false
+	) {
+		echo "{$GLOBALS['yellow']}WARN Cannot write report: {$path}{$GLOBALS['reset']}\n";
+	}
+}
+
+
+// ----------------------------
+// ROOT CONFIG
+// ----------------------------
+$rootComposerPath = $projectRoot . '/composer.json';
+if (!file_exists($rootComposerPath)) {
+	die("{$red}ERROR: composer.json not found in current directory.{$reset}\n");
+}
+
+$rootComposer = json_decode((string) file_get_contents($rootComposerPath), true);
+if (!is_array($rootComposer)) {
+	die("{$red}ERROR: composer.json is not valid JSON.{$reset}\n");
+}
+
+$dragoConfig = $rootComposer['extra'][ToolsExtraKey] ?? [];
+$packageConfig = $dragoConfig['packages'] ?? [];
+$vendorNames = normalizeVendorNames($dragoConfig['vendor-names'] ?? DefaultVendorNames);
+$rootPackageName = InstalledVersions::getRootPackage()['name'] ?? null;
+
+// ----------------------------
+// MAIN LOOP
+// ----------------------------
+$packageNames = InstalledVersions::getInstalledPackages();
+sort($packageNames);
+
+foreach ($packageNames as $packageName) {
+	if ($packageName === $rootPackageName || !isAllowedVendor($packageName, $vendorNames)) {
+		continue;
+	}
+
+	if (($packageConfig[$packageName]['skip'] ?? false) === true) {
+		continue;
+	}
+
+	$packagePath = InstalledVersions::getInstallPath($packageName);
+	if (!$packagePath || !is_file($packagePath . '/composer.json')) {
+		continue;
+	}
+
+	$composer = json_decode((string) file_get_contents($packagePath . '/composer.json'), true);
+	$commands = is_array($composer) ? ($composer['extra'][ToolsExtraKey]['commands'] ?? []) : [];
+	if (!is_array($commands)) {
+		echo "{$red}ERROR {$packageName}: extra.drago-tools.commands must be a list of script paths.{$reset}\n";
+		logEntry($packageName, 'error', '', 'extra.drago-tools.commands must be a list of script paths.');
+		continue;
+	}
+
+	foreach ($commands as $name => $script) {
+		$label = is_string($name) ? "$name ($script)" : (string) $script;
+		try {
+			if (!is_string($script)) {
+				throw new RuntimeException('A command must be a path to a script.');
+			}
+
+			assertSafeRelativePath($script);
+			$scriptPath = $packagePath . '/' . $script;
+			if (!is_file($scriptPath)) {
+				throw new RuntimeException("Script not found: $script");
+			}
+
+			echo "{$blue}INFO {$packageName}: {$label}{$reset}\n";
+			$exitCode = runScript($scriptPath, $projectRoot);
+
+		} catch (Throwable $e) {
+			echo "{$red}ERROR {$packageName}: {$e->getMessage()}{$reset}\n";
+			logEntry($packageName, 'error', is_string($script) ? $script : '', $e->getMessage());
+			continue;
+		}
+
+		if ($exitCode === 0) {
+			logEntry($packageName, 'executed', $script);
+		} else {
+			echo "{$red}ERROR {$packageName}: {$label} exited with code {$exitCode}{$reset}\n";
+			logEntry($packageName, 'failed', $script, "Exit code $exitCode");
+		}
+	}
+}
+
+writeReport($projectRoot . '/' . ReportFile, $log, $stats);
+
+if ($log === []) {
+	echo "{$yellow}WARN No commands found in the installed packages.{$reset}\n";
+}
+
+$ok = $stats['failed'] === 0 && $stats['error'] === 0;
+echo ($ok ? "{$green}OK" : "{$red}ERROR") . " Finished ({$stats['executed']} executed, {$stats['failed']} failed, {$stats['error']} errors){$reset}\n";
+echo 'Report: ' . ReportFile . " (view with: vendor/bin/drago-report)\n";
+exit($ok ? 0 : 1);

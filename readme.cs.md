@@ -33,8 +33,9 @@ existují, takže opravu vydanou v balíčku je potřeba převzít ručně; `dra
 
 - **`drago-install`**: Automaticky kopíruje nebo nahrazuje soubory a adresáře z balíčků ve vendor do kořene projektu.
 - **`drago-clean`**: Uklízí nadbytečné adresáře se zdroji v nastavených složkách vendor, aby se třídy neduplikovaly a nekolidovaly jmenné prostory.
-- **`drago-report`**: Zobrazí reporty v `.drago-project/`: co `drago-install` zkopíroval, nahradil nebo přeskočil
-  a jaké migrace a providery oprávnění se nastavily.
+- **`drago-commands`**: Spustí skripty, které nainstalované balíčky uvádějí v `extra.drago-tools.commands`.
+- **`drago-report`**: Zobrazí reporty v `.drago-project/`: co `drago-install` zkopíroval, nahradil nebo přeskočil,
+  které migrace a které příkazy balíčků proběhly.
 - **`drago-diff`**: Zobrazí soubory projektu, které jejich balíček od instalace změnil.
 
 ## Konfigurace
@@ -229,6 +230,7 @@ vendor/bin/drago-install
 vendor/bin/drago-clean
 vendor/bin/drago-report
 vendor/bin/drago-diff
+vendor/bin/drago-commands
 ```
 
 ### Volby
@@ -239,7 +241,7 @@ vendor/bin/drago-diff
 ### Report
 
 `drago-install` zapíše, co zkopíroval, nahradil nebo přeskočil, do `.drago-project/install.json`. Migrace
-(`drago-ex/migration`) a oprávnění (`drago-ex/permission`) zapisují své reporty do stejné složky.
+(`drago-ex/migration`) a `drago-commands` zapisují své reporty do stejné složky.
 Zobrazíte je takto:
 
 ```bash
@@ -289,8 +291,24 @@ Zbytek nastavení obstarávají balíčky, kterým patří:
 
 ```bash
 php vendor/bin/migration db:migrate --packages
-php vendor/bin/create-permission --packages
+php vendor/bin/drago-commands
 ```
+
+### Příkazy balíčků
+
+Balíček uvádí skripty, které `drago-commands` spustí z kořene projektu, například generátor jeho
+providerů oprávnění. Cesty jsou relativní k balíčku, názvy jsou volitelné:
+
+```json
+"extra": {
+    "drago-tools": {
+        "commands": ["bin/create-front-permission"]
+    }
+}
+```
+
+`drago-commands` spustí skripty všech nainstalovaných balíčků v pořadí podle názvu balíčku a zapíše
+`.drago-project/commands.json`.
 
 ### Priorita migrací
 

@@ -12,13 +12,13 @@ $reset = "\033[0m";
 
 /** Reports of the tools in the order they usually run when a project is set up. */
 const ReportDir = '.drago-project';
-const Tools = ['install', 'migration', 'permission'];
+const Tools = ['install', 'migration', 'commands'];
 const LegacyLogFile = 'drago-install.json';
 
 /**
  * USAGE:
- * drago-report                   : the last run of drago-install, migrations and permissions, grouped by package
- * drago-report --tool=migration  : only install|migration|permission
+ * drago-report                   : the last run of drago-install, migrations and package commands, grouped by package
+ * drago-report --tool=migration  : only install|migration|commands
  * drago-report --package=name    : only entries of packages containing "name"
  * drago-report --action=skipped  : only entries with this action (e.g. copied, executed, generated, error)
  */
@@ -141,8 +141,8 @@ if (!$found) {
 	$hint = match ($tool) {
 		'install' => 'Run drago-install first.',
 		'migration' => 'Run migration db:migrate --packages first.',
-		'permission' => 'Run create-permission --packages first.',
-		default => 'Run drago-install, migration db:migrate --packages or create-permission --packages first.',
+		'commands' => 'Run drago-commands first.',
+		default => 'Run drago-install, migration db:migrate --packages or drago-commands first.',
 	};
 	echo "{$red}ERROR: No report found in " . ReportDir . "/. $hint{$reset}\n";
 	exit(1);

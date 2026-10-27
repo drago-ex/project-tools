@@ -43,4 +43,5 @@ jobs:
           cp bin/drago-clean temp/php/drago-clean.php
           cp bin/drago-report temp/php/drago-report.php
           cp bin/drago-diff temp/php/drago-diff.php
+          cp bin/drago-commands temp/php/drago-commands.php
       - run: php temp/coding-standard/ecs check temp/php
