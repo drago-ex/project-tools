@@ -6,25 +6,10 @@ Nástroje pro automatickou instalaci a úklid zdrojů projektu z balíčků Comp
 [![PHP version](https://badge.fury.io/ph/drago-ex%2Fproject-tools.svg)](https://badge.fury.io/ph/drago-ex%2Fproject-tools)
 [![Coding Style](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml/badge.svg)](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml)
 
-## Myšlenka balíčků Drago
-
-Resource balíčky Drago (`project-auth`, `project-front`, `project-backend` a další) nejsou knihovny, které voláte
-ze svého kódu. Každý obsahuje jen základní části jedné funkce a `drago-install` je zkopíruje do projektu,
-kde se z nich stane váš vlastní kód k úpravám. Pozdější `composer update` nikdy nepřepíše soubory, které už v projektu
-existují, takže opravu vydanou v balíčku je potřeba převzít ručně; `drago-diff` ukáže, kterých souborů se týká.
-
 ## Požadavky
 
 - PHP >= 8.3
 - Composer 2
-
-## Funkce
-
-- **`drago-install`**: Automaticky kopíruje nebo nahrazuje soubory a adresáře z balíčků ve vendor do kořene projektu.
-- **`drago-clean`**: Uklízí nadbytečné adresáře se zdroji v nastavených složkách vendor, aby se třídy neduplikovaly a nekolidovaly jmenné prostory.
-- **`drago-report`**: Zobrazí reporty v `.drago-project/`: co `drago-install` zkopíroval, nahradil nebo přeskočil
-  a jaké migrace a providery oprávnění se nastavily.
-- **`drago-diff`**: Zobrazí soubory projektu, které jejich balíček od instalace změnil.
 
 ## Instalace
 
@@ -36,6 +21,21 @@ Pro vývoj komponent ho přidejte do `require-dev`:
 ```bash
 composer require --dev drago-ex/project-tools
 ```
+
+## Myšlenka balíčků Drago
+
+Resource balíčky Drago (`project-auth`, `project-front`, `project-backend` a další) nejsou knihovny, které voláte
+ze svého kódu. Každý obsahuje jen základní části jedné funkce a `drago-install` je zkopíruje do projektu,
+kde se z nich stane váš vlastní kód k úpravám. Pozdější `composer update` nikdy nepřepíše soubory, které už v projektu
+existují, takže opravu vydanou v balíčku je potřeba převzít ručně; `drago-diff` ukáže, kterých souborů se týká.
+
+## Funkce
+
+- **`drago-install`**: Automaticky kopíruje nebo nahrazuje soubory a adresáře z balíčků ve vendor do kořene projektu.
+- **`drago-clean`**: Uklízí nadbytečné adresáře se zdroji v nastavených složkách vendor, aby se třídy neduplikovaly a nekolidovaly jmenné prostory.
+- **`drago-report`**: Zobrazí reporty v `.drago-project/`: co `drago-install` zkopíroval, nahradil nebo přeskočil
+  a jaké migrace a providery oprávnění se nastavily.
+- **`drago-diff`**: Zobrazí soubory projektu, které jejich balíček od instalace změnil.
 
 ## Konfigurace
 

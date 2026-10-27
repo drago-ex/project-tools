@@ -6,25 +6,10 @@ Tools for automatic installation and cleanup of project resources from Composer 
 [![PHP version](https://badge.fury.io/ph/drago-ex%2Fproject-tools.svg)](https://badge.fury.io/ph/drago-ex%2Fproject-tools)
 [![Coding Style](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml/badge.svg)](https://github.com/drago-ex/project-tools/actions/workflows/coding-style.yml)
 
-## The Idea Behind Drago Packages
-
-Drago resource packages (`project-auth`, `project-front`, `project-backend` and others) are not libraries you call
-from your code. Each contains only the basic parts of one feature, and `drago-install` copies them into your project,
-where they become your own code to adapt. A later `composer update` never overwrites files that already exist in the
-project, so a fix released in a package has to be taken over by hand; `drago-diff` shows which files it concerns.
-
 ## Requirements
 
 - PHP >= 8.3
 - Composer 2
-
-## Features
-
-- **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
-- **`drago-clean`**: Cleans up redundant resource folders in configured vendor folders to prevent class duplication or namespace collisions.
-- **`drago-report`**: Shows the reports in `.drago-project/`: what `drago-install` copied, replaced or skipped,
-  and which migrations and permission providers were set up.
-- **`drago-diff`**: Shows the project files whose package changed them since they were installed.
 
 ## Installation
 
@@ -36,6 +21,21 @@ For component development, add it to `require-dev`:
 ```bash
 composer require --dev drago-ex/project-tools
 ```
+
+## The Idea Behind Drago Packages
+
+Drago resource packages (`project-auth`, `project-front`, `project-backend` and others) are not libraries you call
+from your code. Each contains only the basic parts of one feature, and `drago-install` copies them into your project,
+where they become your own code to adapt. A later `composer update` never overwrites files that already exist in the
+project, so a fix released in a package has to be taken over by hand; `drago-diff` shows which files it concerns.
+
+## Features
+
+- **`drago-install`**: Automatically copies or replaces files/directories from vendor packages to your project root.
+- **`drago-clean`**: Cleans up redundant resource folders in configured vendor folders to prevent class duplication or namespace collisions.
+- **`drago-report`**: Shows the reports in `.drago-project/`: what `drago-install` copied, replaced or skipped,
+  and which migrations and permission providers were set up.
+- **`drago-diff`**: Shows the project files whose package changed them since they were installed.
 
 ## Configuration
 
