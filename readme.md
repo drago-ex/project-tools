@@ -68,7 +68,7 @@ Configure trusted Composer vendors in your **root** `composer.json`:
 ```json
 "extra": {
     "drago-tools": {
-        "vendor-names": ["drago-ex", "netis-cms"],
+        "vendor-names": ["drago-ex", "acme"],
         "allow-library-install": true
     }
 }
@@ -195,12 +195,12 @@ Default priority is `100`.
 Example:
 
 ```text
-drago-ex/project-backend       priority 100
-drago-ex/project-backend-ui    priority 200
-netis-cms/project-preset       priority 300
+acme/backend       priority 100
+acme/backend-ui    priority 200
+acme/overlay       priority 300
 ```
 
-In this example, `project-backend-ui` can override backend files, and `netis-cms/project-preset` can override both.
+In this example, `acme/backend-ui` can override the files of `acme/backend`, and `acme/overlay` can override both.
 
 ## Usage
 

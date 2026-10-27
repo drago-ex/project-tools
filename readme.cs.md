@@ -68,7 +68,7 @@ Důvěryhodné vendory Composeru nastavte v **kořenovém** `composer.json`:
 ```json
 "extra": {
     "drago-tools": {
-        "vendor-names": ["drago-ex", "netis-cms"],
+        "vendor-names": ["drago-ex", "acme"],
         "allow-library-install": true
     }
 }
@@ -195,12 +195,12 @@ Výchozí priorita je `100`.
 Příklad:
 
 ```text
-drago-ex/project-backend       priority 100
-drago-ex/project-backend-ui    priority 200
-netis-cms/project-preset       priority 300
+acme/backend       priority 100
+acme/backend-ui    priority 200
+acme/overlay       priority 300
 ```
 
-V tomto příkladu může `project-backend-ui` přepsat soubory administrace a `netis-cms/project-preset` oba předchozí.
+V tomto příkladu může `acme/backend-ui` přepsat soubory `acme/backend` a `acme/overlay` oba předchozí.
 
 ## Použití
 
