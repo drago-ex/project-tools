@@ -8,7 +8,7 @@ Nástroje pro automatickou instalaci a úklid zdrojů projektu z balíčků Comp
 
 ## Požadavky
 
-- PHP >= 8.3
+- PHP >= 8.3, < 9
 - Composer 2
 
 ## Instalace

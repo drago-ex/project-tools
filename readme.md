@@ -8,7 +8,7 @@ Tools for automatic installation and cleanup of project resources from Composer 
 
 ## Requirements
 
-- PHP >= 8.3
+- PHP >= 8.3, < 9
 - Composer 2
 
 ## Installation
