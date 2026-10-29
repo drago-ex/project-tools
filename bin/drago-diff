@@ -1,7 +1,5 @@
 #!/usr/bin/env php
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use Composer\InstalledVersions;
 
@@ -87,7 +85,8 @@ function isRecordedInstall(array $record): bool
 /** A branch version shows its commit, e.g. "dev-main (a57c5d7)". */
 function versionLabel(?string $version, ?string $reference): string
 {
-	return (string) $version . ($version !== null && $reference !== null && isBranch($version) ? ' (' . substr($reference, 0, 7) . ')' : '');
+	return (string) $version
+		. ($version !== null && $reference !== null && isBranch($version) ? ' (' . substr($reference, 0, 7) . ')' : '');
 }
 
 
@@ -130,7 +129,7 @@ function packageFiles(string $package, string $version, string $source): ?string
 		deleteDir($dir);
 	}
 	if (!is_dir($dir)) {
-		@mkdir($dir, 0o777, true);
+		@mkdir($dir, 0o777, true); // @ directory may already exist
 		// Run outside the project: inside it, Composer does not find resource packages of other versions.
 		$command = sprintf(
 			'composer archive %s %s --format=tar --dir=. --file=package --no-interaction',
@@ -176,7 +175,9 @@ function fileStatus(string $projectRoot, string $path, array $record): array
 		return ['upstream' => 'unknown', 'local' => $local, 'current' => $current, 'reference' => $reference];
 	}
 
-	$upstream = !is_file("$dir/{$record['source']}") ? 'removed' : (fileHash("$dir/{$record['source']}") === $record['hash'] ? 'unchanged' : 'changed');
+	$upstream = !is_file("$dir/{$record['source']}")
+		? 'removed'
+		: (fileHash("$dir/{$record['source']}") === $record['hash'] ? 'unchanged' : 'changed');
 	return ['upstream' => $upstream, 'local' => $local, 'current' => $current, 'reference' => $reference];
 }
 
@@ -189,7 +190,7 @@ function fileStatus(string $projectRoot, string $path, array $record): array
  */
 function newReplaceOnceFiles(string $projectRoot, array $installed): array
 {
-	$root = json_decode((string) @file_get_contents("$projectRoot/composer.json"), true);
+	$root = json_decode((string) @file_get_contents("$projectRoot/composer.json"), true); // @ the file may be missing
 	$found = [];
 	foreach ($root['extra']['drago-tools']['packages'] ?? [] as $package => $options) {
 		$version = currentVersion((string) $package);
@@ -197,7 +198,7 @@ function newReplaceOnceFiles(string $projectRoot, array $installed): array
 			continue;
 		}
 
-		$composer = json_decode((string) @file_get_contents(InstalledVersions::getInstallPath($package) . '/composer.json'), true);
+		$composer = json_decode((string) @file_get_contents(InstalledVersions::getInstallPath($package) . '/composer.json'), true); // @ the file may be missing
 		$install = $composer['extra']['drago-tools']['install'] ?? [];
 		if (($install['replace-once'] ?? false) !== true) {
 			continue;
@@ -214,10 +215,15 @@ function newReplaceOnceFiles(string $projectRoot, array $installed): array
 			$files = [];
 			if (is_file("$dir/$sourceRule")) {
 				$destination = $destinationRule === '' ? basename($sourceRule) : rtrim((string) $destinationRule, '/');
-				$files[$sourceRule] = pathinfo($destination, PATHINFO_EXTENSION) ? $destination : $destination . '/' . basename($sourceRule);
+				$files[$sourceRule] = pathinfo($destination, PATHINFO_EXTENSION)
+					? $destination
+					: $destination . '/' . basename($sourceRule);
 			} else {
 				$base = $destinationRule === '' ? basename($sourceRule) : rtrim((string) $destinationRule, '/');
-				$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator("$dir/$sourceRule", FilesystemIterator::SKIP_DOTS));
+				$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(
+					"$dir/$sourceRule",
+					FilesystemIterator::SKIP_DOTS,
+				));
 				foreach ($iterator as $item) {
 					if ($item->isFile()) {
 						$sub = str_replace('\\', '/', substr($item->getPathname(), strlen("$dir/$sourceRule") + 1));
@@ -289,7 +295,9 @@ if ($file !== null && !$accept) {
 	$oldFetchable = $record['version'] !== null && (!isBranch($record['version']) || isRecordedInstall($record));
 	if ($compareProject || !$oldFetchable) {
 		if (!is_file("$projectRoot/$file")) {
-			echo "{$red}ERROR: $file was deleted in the project" . ($compareProject ? '' : " and $recordedLabel cannot be fetched (an older commit of a branch)") . ".{$reset}\n";
+			echo "{$red}ERROR: $file was deleted in the project"
+				. ($compareProject ? '' : " and $recordedLabel cannot be fetched (an older commit of a branch)")
+				. ".{$reset}\n";
 			exit(1);
 		}
 
@@ -342,12 +350,20 @@ if ($accept) {
 			continue;
 		}
 
-		$installed[$path] = ['version' => $status['current'], 'reference' => $status['reference'], 'hash' => fileHash("$dir/{$record['source']}")] + $record;
+		$installed[$path] = [
+			'version' => $status['current'],
+			'reference' => $status['reference'],
+			'hash' => fileHash("$dir/{$record['source']}"),
+		]
+			+ $record;
 		echo "{$green}ACCEPTED: $path ({$record['package']} " . versionLabel($status['current'], $status['reference']) . "){$reset}\n";
 	}
 
 	ksort($installed);
-	file_put_contents($installedPath, json_encode(['files' => $installed], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+	file_put_contents(
+		$installedPath,
+		json_encode(['files' => $installed], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n",
+	);
 	if ($changed === []) {
 		echo "Nothing to accept.\n";
 	}
@@ -366,11 +382,19 @@ foreach ($grouped as $package => $files) {
 		. ($first['current'] !== null ? versionLabel($first['current'], $first['reference']) : '(removed)') . "\n";
 	foreach ($files as $path => $status) {
 		$hint = match (true) {
-			$status['upstream'] === 'changed' && $status['local'] === 'unchanged' => 'not edited in the project, the new version can be taken as it is',
+			$status['upstream'] === 'changed' && $status['local'] === 'unchanged'
+				=> 'not edited in the project, the new version can be taken as it is',
 			$status['upstream'] === 'changed' => 'edited in the project, merge by hand',
 			default => '',
 		};
-		printf("  %s%-15s%s %s%s\n", $colors[$status['upstream']] ?? '', $status['upstream'], $reset, $path, $hint !== '' ? "  ($hint)" : '');
+		printf(
+			"  %s%-15s%s %s%s\n",
+			$colors[$status['upstream']] ?? '',
+			$status['upstream'],
+			$reset,
+			$path,
+			$hint !== '' ? "  ($hint)" : '',
+		);
 	}
 }
 
@@ -378,7 +402,15 @@ $newFiles = newReplaceOnceFiles($projectRoot, $installed);
 if ($newFiles !== []) {
 	echo ($changed !== [] ? "\n" : '') . "New files of replace-once packages, not installed (copy them by hand if you want them):\n";
 	foreach ($newFiles as $new) {
-		printf("  %snew%s             %s  (%s %s: %s)\n", $yellow, $reset, $new['destination'], $new['package'], $new['version'], $new['source']);
+		printf(
+			"  %snew%s             %s  (%s %s: %s)\n",
+			$yellow,
+			$reset,
+			$new['destination'],
+			$new['package'],
+			$new['version'],
+			$new['source'],
+		);
 	}
 }
 

@@ -1,7 +1,5 @@
 #!/usr/bin/env php
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use Composer\InstalledVersions;
 
@@ -239,6 +237,7 @@ if ($log === []) {
 }
 
 $ok = $stats['failed'] === 0 && $stats['error'] === 0;
-echo ($ok ? "{$green}OK" : "{$red}ERROR") . " Finished ({$stats['executed']} executed, {$stats['failed']} failed, {$stats['error']} errors){$reset}\n";
+echo ($ok ? "{$green}OK" : "{$red}ERROR")
+	. " Finished ({$stats['executed']} executed, {$stats['failed']} failed, {$stats['error']} errors){$reset}\n";
 echo 'Report: ' . ReportFile . " (view with: vendor/bin/drago-report)\n";
 exit($ok ? 0 : 1);

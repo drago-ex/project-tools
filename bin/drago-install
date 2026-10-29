@@ -1,7 +1,5 @@
 #!/usr/bin/env php
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use Composer\InstalledVersions;
 
@@ -259,8 +257,8 @@ function copyFile(string $source, string $destination, bool $overwrite = false):
 
 	logEntry(($overwrite && $existsBefore) ? 'replaced' : 'copied', relativePath($source), relativeDestination($destination));
 	$icon = ($overwrite && $existsBefore)
-			? "{$GLOBALS['green']}REPLACED:{$GLOBALS['reset']}"
-			: "{$GLOBALS['green']}COPIED:{$GLOBALS['reset']}";
+		? "{$GLOBALS['green']}REPLACED:{$GLOBALS['reset']}"
+		: "{$GLOBALS['green']}COPIED:{$GLOBALS['reset']}";
 	message("$source -> $destination", $icon);
 }
 
@@ -431,8 +429,8 @@ function installPackageResources(
 			}
 
 			$destination = $dstRel === ''
-					? $targetBaseDir . '/' . basename($source)
-					: $targetBaseDir . '/' . $dstRel;
+				? $targetBaseDir . '/' . basename($source)
+				: $targetBaseDir . '/' . $dstRel;
 
 			if (is_file($source)) {
 				if (is_dir($destination) || (!pathinfo($destination, PATHINFO_EXTENSION) && !file_exists($destination))) {
@@ -517,7 +515,12 @@ function planFile(string $source, string $destination, bool $overwrite): void
 		|| isset($GLOBALS['providedByPackage'][$destination]);
 	if ($installedByDependency && !$overwrite) {
 		message("$destination is also installed by a dependency", "{$GLOBALS['red']}CONFLICT:{$GLOBALS['reset']}", true);
-		logEntry('conflict', relativePath($source), $destination, 'A dependency installs the same file; copy keeps the one installed first, use replace to override it.');
+		logEntry(
+			'conflict',
+			relativePath($source),
+			$destination,
+			'A dependency installs the same file; copy keeps the one installed first, use replace to override it.',
+		);
 		return;
 	}
 
@@ -567,7 +570,11 @@ function writeRootComposer(string $rootComposerPath, stdClass $rootComposer, str
 
 	if (preg_match('~^([ \t]+)"~m', $original, $m) === 1 && $m[1] !== '    ') {
 		$indent = $m[1];
-		$json = (string) preg_replace_callback('~^(?: {4})+~m', fn(array $s): string => str_repeat($indent, intdiv(strlen($s[0]), 4)), $json);
+		$json = (string) preg_replace_callback(
+			'~^(?: {4})+~m',
+			fn(array $s): string => str_repeat($indent, intdiv(strlen($s[0]), 4)),
+			$json,
+		);
 	}
 
 	file_put_contents($rootComposerPath, $json . "\n");
@@ -644,7 +651,6 @@ if ($isDevMode) {
 // ----------------------------
 $packages = [];
 foreach (InstalledVersions::getInstalledPackages() as $packageName) {
-
 	// Skip root package
 	if ($packageName === $rootPackageName) {
 		continue;

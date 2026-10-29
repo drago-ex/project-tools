@@ -1,0 +1,13 @@
+use:
+	- nette
+	- modernizations
+
+# the scripts in bin/ have no .php extension
+paths:
+	- bin/drago-clean
+	- bin/drago-commands
+	- bin/drago-diff
+	- bin/drago-install
+	- bin/drago-report
+
+nameResolution: certain
