@@ -287,22 +287,19 @@ from `.dev-resource/app` after `resources/app` in `tests/bootstrap.php`. `drago-
 
 ## Project Setup
 
-The rest of the setup is done by the packages that own it:
-
-```bash
-php vendor/bin/migration db:migrate --packages
-php vendor/bin/drago-commands
-```
+The database is set up by [drago-ex/migration](https://github.com/drago-ex/migration)
+(`bin/project-setup` of [Drago Project](https://github.com/drago-ex/project) runs it); other setup steps of the
+packages run with `drago-commands`.
 
 ### Package Commands
 
-A package lists the scripts that `drago-commands` runs from the project root, for example the generator of its
-permission providers. Paths are relative to the package, names are optional:
+A package lists the PHP scripts that `drago-commands` runs from the project root. Paths are relative to the
+package; an object instead of a list gives the scripts names shown in the output:
 
 ```json
 "extra": {
     "drago-tools": {
-        "commands": ["bin/create-front-permission"]
+        "commands": ["bin/setup"]
     }
 }
 ```
